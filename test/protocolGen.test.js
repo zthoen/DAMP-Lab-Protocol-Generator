@@ -71,8 +71,6 @@ test("protocols are titled 'Protocol 1', 'Protocol 2', ...", () => {
 });
 
 test("equipToStations with no fixtures mapped at all adds no extra protocol beyond count", () => {
-  // parseLabTable always injects the 5 baseline fixtures now, so this exercises
-  // generateProtocols' own graceful-degradation path directly, bypassing that.
   const equipToStations = { Pipette: ["A1"], Centrifuge: ["D2"], Microscope: ["G1"] };
   const { protocols } = generateProtocols(equipToStations, { count: 5, minSteps: 3, maxSteps: 5, seed: 9 });
   assert.equal(protocols.length, 5);
@@ -89,7 +87,7 @@ Pipette Tips Restock\tConsumables 2
   assert.equal(fixtureTable.errors.length, 0);
   const { protocols } = generateProtocols(fixtureTable.equipToStations, { count: 2, minSteps: 2, maxSteps: 2, seed: 1 });
   const visited = new Set(protocols.flatMap((p) => p.steps.map((s) => s.station)));
-  for (const fixture of ["SHARPS", "RECYCLE", "WASTE", "SINK", "CONSUM"]) {
+  for (const fixture of ["SHARPS", "RECYCLE", "WASTE", "SINK", "CONSUM2"]) {
     assert.ok(visited.has(fixture), `${fixture} was never visited`);
   }
   // The coverage protocol (if any) still follows the naming scheme.
@@ -113,7 +111,7 @@ test("the shared full-table test fixture parses with no errors", () => {
 test("every protocol opens with a retrieval step at consumables", () => {
   const { equipToStations } = fullTable();
   const { protocols } = generateProtocols(equipToStations, { count: 15, minSteps: 4, maxSteps: 8, seed: 21 });
-  for (const p of protocols) assert.equal(p.steps[0].station, "CONSUM", `${p.id} didn't open at CONSUM`);
+  for (const p of protocols) assert.equal(p.steps[0].station, "CONSUM2", `${p.id} didn't open at CONSUM2`);
 });
 
 test("every protocol closes with a disposal step at sharps and/or biohazard waste", () => {
@@ -146,31 +144,25 @@ test("bookend steps are still forced even when minSteps/maxSteps is too tight to
   // single-purpose fixture-visit and isn't held to the bookend rule) is checked.
   for (const p of protocols.slice(0, count)) {
     assert.ok(p.steps.length >= 2, `${p.id} should have at least a retrieve + disposal step`);
-    assert.equal(p.steps[0].station, "CONSUM");
+    assert.equal(p.steps[0].station, "CONSUM2");
   }
 });
 
 test("equipToStations without consumables/waste mapped warns and skips the bookend steps", () => {
-  // parseLabTable always injects the 5 baseline fixtures now, so this exercises
-  // generateProtocols' own graceful-degradation path directly, bypassing that.
   const equipToStations = { Pipette: ["A1"], Centrifuge: ["D2"], Microscope: ["G1"] };
   const out = generateProtocols(equipToStations, { count: 5, minSteps: 3, maxSteps: 5, seed: 9 });
   assert.ok(out.warnings.some((w) => /Consumables 2/.test(w)));
   assert.ok(out.warnings.some((w) => /Sharps|Biohazard/.test(w)));
-  for (const p of out.protocols) assert.notEqual(p.steps[0].station, "CONSUM");
+  for (const p of out.protocols) assert.notEqual(p.steps[0].station, "CONSUM2");
 });
 
-test("a table parsed with no fixtures mentioned still opens/closes with the baseline fixture equipment", () => {
-  const { equipToStations } = table(); // none of these rows mention SHARPS/RECYCLE/WASTE/SINK/CONSUM
-  const count = 8;
-  const { protocols } = generateProtocols(equipToStations, { count, minSteps: 4, maxSteps: 7, seed: 14 });
-  // Only the main batch — an auto-appended coverage protocol (for a fixture like
-  // RECYCLE/SINK that the random walk happened to miss) isn't held to the bookend rule.
-  for (const p of protocols.slice(0, count)) {
-    assert.equal(p.steps[0].station, "CONSUM", `${p.id} didn't open at CONSUM`);
-    assert.equal(p.steps[0].equipment, "Consumables 2");
-    const last = p.steps[p.steps.length - 1];
-    assert.ok(last.station === "SHARPS" || last.station === "WASTE", `${p.id} closed at ${last.station}, not a disposal bin`);
-    assert.ok(last.equipment === "Sharps" || last.equipment === "Biohazardous Waste");
+test("a table parsed with no fixtures mentioned never opens/closes with a fixture — nothing is auto-installed there", () => {
+  const { equipToStations } = table(); // none of these rows mention SHARPS/RECYCLE/WASTE/SINK/CONSUM1/CONSUM2
+  const { protocols, warnings } = generateProtocols(equipToStations, { count: 8, minSteps: 4, maxSteps: 7, seed: 14 });
+  assert.ok(warnings.some((w) => /Consumables 2/.test(w)));
+  assert.ok(warnings.some((w) => /Sharps|Biohazard/.test(w)));
+  const fixtureIds = new Set(["SHARPS", "RECYCLE", "WASTE", "SINK", "GLASSWARE", "CONSUM1", "CONSUM2", "REFRIGERATOR"]);
+  for (const p of protocols) {
+    for (const s of p.steps) assert.ok(!fixtureIds.has(s.station), `${p.id} visited fixture ${s.station}, which has no mapped equipment`);
   }
 });

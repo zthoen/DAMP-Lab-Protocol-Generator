@@ -1,8 +1,9 @@
 /* Static lab floor geometry: the physical grid every station map is drawn onto,
    independent of whatever equipment/station table a user loads. Fixed at 8 columns
-   (A-H) x 3 rows (1-3) = 24 benches, plus 5 fixed utility fixtures around the back
-   wall (waste/sharps/recycling/sink/consumables — see FIXTURES below). Storage
-   aisles from the original sim are otherwise out of scope for now. */
+   (A-H) x 3 rows (1-3) = 24 benches, plus 8 fixed utility fixtures around the back
+   wall (waste/sharps/recycling/sink/glassware/consumables/refrigerator — see
+   FIXTURES below). Storage aisles from the original sim are otherwise out of
+   scope for now. */
 
 // Real-world reference measurements the protocol generator's "distance walked" is
 // built from (see routeDistanceFt below) — approximate, as given by the lab:
@@ -54,8 +55,8 @@ const box = (lengthFt, widthFt) => ({ w: Math.round(widthFt * FIXTURE_PX_PER_FT)
 
 const sharpsBox = box(2, 1), recycleBox = box(1.5, 3), wasteBox = box(2, 2);
 const sinkBox = box(2.5, 5);
-const pipetteBox = box(2.25, 4), glasswareBox = box(2.25, 4), consumBox = box(2.25, 4);
-const freezerBox = box(2.5, 5);
+const glasswareBox = box(2.25, 4), consum1Box = box(2.25, 4), consum2Box = box(2.25, 4);
+const refrigeratorBox = box(2.5, 5);
 
 // The trio's top edge touches row 3's bottom edge directly (no gap), chained
 // left to right and centered on the B-C walkway boundary they straddle.
@@ -82,14 +83,14 @@ const BACK_AISLE_BOTTOM = BACK_AISLE_Y + BACK_AISLE_H / 2;
 const FAR_TOP_Y = BACK_AISLE_BOTTOM + 22; // headroom for the ID label above the box
 const sinkX = COL_X.B;
 const glasswareX = sinkX + sinkBox.w + FIXTURE_GAP;
-const pipetteX = glasswareX + glasswareBox.w + FIXTURE_GAP;
-const consumX = pipetteX + pipetteBox.w + FIXTURE_GAP;
+const consum1X = glasswareX + glasswareBox.w + FIXTURE_GAP;
+const consum2X = consum1X + consum1Box.w + FIXTURE_GAP;
 
 // The refrigerator sits on the same far side, off past the last column — 5ft
 // to the right of H3, across the walkway from it (same FAR_TOP_Y as the rest
 // of the far row, since it's the same "beyond the back walkway" distance,
 // just far to the right instead of over by B-C).
-const freezerX = COL_X.H + SLOT_W + 5 * FIXTURE_PX_PER_FT;
+const refrigeratorX = COL_X.H + SLOT_W + 5 * FIXTURE_PX_PER_FT;
 
 export const FIXTURES = {
   SHARPS: { name: "Sharps Bin", x: sharpsX, y: TRIO_TOP_Y, w: sharpsBox.w, h: sharpsBox.h },
@@ -97,26 +98,16 @@ export const FIXTURES = {
   WASTE: { name: "Biohazard Waste", x: wasteX, y: TRIO_TOP_Y, w: wasteBox.w, h: wasteBox.h },
   SINK: { name: "Sink", x: sinkX, y: FAR_TOP_Y, w: sinkBox.w, h: sinkBox.h },
   GLASSWARE: { name: "Glassware", x: glasswareX, y: FAR_TOP_Y, w: glasswareBox.w, h: glasswareBox.h },
-  PIPETTE: { name: "Consumables 1", x: pipetteX, y: FAR_TOP_Y, w: pipetteBox.w, h: pipetteBox.h },
-  CONSUM: { name: "Consumables 2", x: consumX, y: FAR_TOP_Y, w: consumBox.w, h: consumBox.h },
-  FREEZER: { name: "4C Refrigerator", x: freezerX, y: FAR_TOP_Y, w: freezerBox.w, h: freezerBox.h },
+  CONSUM1: { name: "Consumables 1", x: consum1X, y: FAR_TOP_Y, w: consum1Box.w, h: consum1Box.h },
+  CONSUM2: { name: "Consumables 2", x: consum2X, y: FAR_TOP_Y, w: consum2Box.w, h: consum2Box.h },
+  REFRIGERATOR: { name: "4C Refrigerator", x: refrigeratorX, y: FAR_TOP_Y, w: refrigeratorBox.w, h: refrigeratorBox.h },
 };
 
-// Each of these 5 fixtures is also a piece of equipment in its own right,
-// permanently "installed" at its own location — retrieving from Consumables 2
-// or disposing of waste is itself a protocol step, not just a destination.
-// labTable.js adds these to every parsed table's equipToStations/stationEquip
-// unconditionally, regardless of what the pasted data says, since they're
-// baseline lab fixtures that are always physically present. Glassware,
-// Consumables 1, and the 4C refrigerator are just destinations on the map,
-// like a bench — nothing is auto-installed there.
-export const FIXTURE_EQUIPMENT = {
-  SHARPS: "Sharps",
-  RECYCLE: "Recycle",
-  WASTE: "Biohazardous Waste",
-  SINK: "Sink",
-  CONSUM: "Consumables 2",
-};
+// None of the 8 fixtures carry any built-in equipment — every piece of
+// equipment a protocol can use, at a fixture or a bench alike, has to come
+// from the table pasted on the Equipment Input tab. A fixture is just a
+// destination on the map, exactly like a bench, until a pasted row explicitly
+// maps something to it.
 
 // The trio (touching row 3, reached via whichever of B's or C's own walkway is
 // closer — never a separate back-walkway crossing) vs. everything else beyond
@@ -129,9 +120,9 @@ const NEAR_FIXTURES = { SHARPS: ["B"], WASTE: ["C"], RECYCLE: ["B", "C"] };
 const FAR_FEETX = {
   SINK: 0,
   GLASSWARE: 4,
-  PIPETTE: 8,
-  CONSUM: 12,
-  FREEZER: COL_ORDER.indexOf("H") * BENCH_WIDTH_FT + 5,
+  CONSUM1: 8,
+  CONSUM2: 12,
+  REFRIGERATOR: COL_ORDER.indexOf("H") * BENCH_WIDTH_FT + 5,
 };
 const isNearFixture = (id) => Object.prototype.hasOwnProperty.call(NEAR_FIXTURES, id);
 const isFarFixture = (id) => Object.prototype.hasOwnProperty.call(FAR_FEETX, id);
@@ -152,7 +143,7 @@ export const WALKWAYS = WALKWAY_GROUPS.map(([l, r]) => ({
   height: BACK_AISLE_TOP - ROW_Y[1],
 }));
 const FLOOR_X = 20;
-const floorRightEdge = freezerX + freezerBox.w + FLOOR_X;
+const floorRightEdge = refrigeratorX + refrigeratorBox.w + FLOOR_X;
 export const BACK_AISLE = { x: FLOOR_X, y: BACK_AISLE_TOP, width: floorRightEdge - FLOOR_X, height: BACK_AISLE_H };
 
 // A single outline tracing the 4 prongs + the back-aisle bar as one comb-shaped

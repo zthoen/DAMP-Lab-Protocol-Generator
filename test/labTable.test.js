@@ -77,25 +77,20 @@ test("the 3 new destination fixtures are valid station names too", () => {
   const t = parseLabTable(raw);
   assert.equal(t.errors.length, 0);
   assert.deepEqual(t.equipToStations["Beakers"], ["GLASSWARE"]);
-  assert.deepEqual(t.equipToStations["Tip Boxes"], ["PIPETTE"]);
-  assert.deepEqual(t.equipToStations["Frozen Reagents"], ["FREEZER"]);
+  assert.deepEqual(t.equipToStations["Tip Boxes"], ["CONSUM1"]);
+  assert.deepEqual(t.equipToStations["Frozen Reagents"], ["REFRIGERATOR"]);
 });
 
-test("the 5 fixtures are always present as their own baseline equipment, even on an empty paste", () => {
+test("no fixture carries any built-in equipment — an empty paste maps nothing at all", () => {
   const t = parseLabTable("");
-  assert.deepEqual(t.equipToStations["Sharps"], ["SHARPS"]);
-  assert.deepEqual(t.equipToStations["Recycle"], ["RECYCLE"]);
-  assert.deepEqual(t.equipToStations["Biohazardous Waste"], ["WASTE"]);
-  assert.deepEqual(t.equipToStations["Sink"], ["SINK"]);
-  assert.deepEqual(t.equipToStations["Consumables 2"], ["CONSUM"]);
-  for (const id of ["SHARPS", "RECYCLE", "WASTE", "SINK", "CONSUM"]) assert.equal(t.stationEquip[id].length, 1);
-  // Glassware, Consumables 1, and the refrigerator are plain destinations,
-  // like a bench — nothing is auto-installed there.
-  for (const id of ["PIPETTE", "GLASSWARE", "FREEZER"]) assert.equal(t.stationEquip[id], undefined);
+  assert.deepEqual(t.equipToStations, {});
+  for (const id of ["SHARPS", "RECYCLE", "WASTE", "SINK", "GLASSWARE", "CONSUM1", "CONSUM2", "REFRIGERATOR"]) {
+    assert.equal(t.stationEquip[id], undefined);
+  }
 });
 
-test("a pasted row at a fixture station adds alongside the baseline fixture equipment, not instead of it", () => {
+test("a pasted row at a fixture station is the only equipment mapped there", () => {
   const raw = "Autoclave Bags\tBiohazard Waste";
   const t = parseLabTable(raw);
-  assert.deepEqual(t.stationEquip["WASTE"], ["Autoclave Bags", "Biohazardous Waste"]);
+  assert.deepEqual(t.stationEquip["WASTE"], ["Autoclave Bags"]);
 });

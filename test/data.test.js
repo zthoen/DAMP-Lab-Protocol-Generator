@@ -45,7 +45,7 @@ test("BENCH_DIST_FT lookup matches routeDistanceFt for every pair", () => {
 
 test("the 8 fixtures are valid stations alongside the 24 benches", () => {
   assert.equal(STATION_IDS.length, 32);
-  for (const id of ["SHARPS", "RECYCLE", "WASTE", "SINK", "PIPETTE", "GLASSWARE", "CONSUM", "FREEZER"]) {
+  for (const id of ["SHARPS", "RECYCLE", "WASTE", "SINK", "GLASSWARE", "CONSUM1", "CONSUM2", "REFRIGERATOR"]) {
     assert.ok(STATION_IDS.includes(id));
   }
 });
@@ -85,7 +85,7 @@ test("two trio members resolve through their two anchor columns", () => {
 });
 
 test("the sink/consumables pair sits beyond the back walkway — pure lateral between them", () => {
-  const d = routeDistanceFt("SINK", "CONSUM");
+  const d = routeDistanceFt("SINK", "CONSUM2");
   assert.ok(d > 0);
   assert.equal(routeDistanceFt("SINK", "SINK"), 0);
 });
@@ -104,19 +104,19 @@ test("the trio and the far pair are on opposite sides of the same walkway", () =
 });
 
 test("the far row orders sink, glassware, Consumables 1, Consumables 2 left to right", () => {
-  assert.ok(routeDistanceFt("SINK", "GLASSWARE") < routeDistanceFt("SINK", "PIPETTE"));
-  assert.ok(routeDistanceFt("SINK", "PIPETTE") < routeDistanceFt("SINK", "CONSUM"));
+  assert.ok(routeDistanceFt("SINK", "GLASSWARE") < routeDistanceFt("SINK", "CONSUM1"));
+  assert.ok(routeDistanceFt("SINK", "CONSUM1") < routeDistanceFt("SINK", "CONSUM2"));
 });
 
-test("the freezer is a far fixture, reachable like any other far fixture", () => {
-  assert.ok(routeDistanceFt("A1", "FREEZER") > 0);
-  assert.equal(routeDistanceFt("FREEZER", "FREEZER"), 0);
+test("the refrigerator is a far fixture, reachable like any other far fixture", () => {
+  assert.ok(routeDistanceFt("A1", "REFRIGERATOR") > 0);
+  assert.equal(routeDistanceFt("REFRIGERATOR", "REFRIGERATOR"), 0);
   // Far from column H, since it sits just past it.
-  assert.ok(routeDistanceFt("H3", "FREEZER") < routeDistanceFt("A3", "FREEZER"));
+  assert.ok(routeDistanceFt("H3", "REFRIGERATOR") < routeDistanceFt("A3", "REFRIGERATOR"));
 });
 
 test("routeWaypoints for a fixture ends at its own center and starts at a real point", () => {
-  for (const id of ["SHARPS", "RECYCLE", "WASTE", "SINK", "PIPETTE", "GLASSWARE", "CONSUM", "FREEZER"]) {
+  for (const id of ["SHARPS", "RECYCLE", "WASTE", "SINK", "GLASSWARE", "CONSUM1", "CONSUM2", "REFRIGERATOR"]) {
     const pts = routeWaypoints("A1", id);
     assert.deepEqual(pts[pts.length - 1], center(id), `${id} path should end at its center`);
     assert.equal(typeof pts[0].x, "number");

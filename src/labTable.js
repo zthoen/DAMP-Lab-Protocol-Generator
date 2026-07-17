@@ -1,4 +1,4 @@
-import { FIXTURE_EQUIPMENT, NAME_TO_STATION_ID } from "./data.js";
+import { NAME_TO_STATION_ID } from "./data.js";
 
 export const isValidStationName = (name) => Object.prototype.hasOwnProperty.call(NAME_TO_STATION_ID, name.toLowerCase());
 const HEADER_WORDS = /^(equipment|instrument|device)$/i;
@@ -17,13 +17,17 @@ const splitMulti = (cell) => (cell || "").split(/[,;]/).map((c) => c.trim()).fil
    table needs to know about. A cell may list multiple station names for the same
    equipment row (comma/semicolon-separated) — every valid one gets the equipment
    added to it. Invalid names are reported per-location without dropping the rest of
-   that row. Auto-detects and skips a header row. Returns `equipToStations`
-   (equipment → station ids), `stationEquip` (station id → equipment list), and
-   `errors` so bad paste data is visible instead of silently dropped. */
+   that row. Auto-detects and skips a header row. Every fixture (sharps bin, sink,
+   consumables storage, ...) is just another valid station name — none of them come
+   with any equipment built in; the only equipment that ever ends up in
+   `equipToStations`/`stationEquip` is whatever the pasted table explicitly maps, at
+   a bench or a fixture alike. Returns `equipToStations` (equipment → station ids),
+   `stationEquip` (station id → equipment list), and `errors` so bad paste data is
+   visible instead of silently dropped. */
 export function parseLabTable(raw) {
   const lines = String(raw || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const errors = [];
-  if (lines.length === 0) return withFixtureEquipment({ equipToStations: {}, stationEquip: {}, rowCount: 0, errors });
+  if (lines.length === 0) return { equipToStations: {}, stationEquip: {}, rowCount: 0, errors };
 
   let rows = lines.map(splitRow);
   const [first] = rows;
@@ -54,33 +58,16 @@ export function parseLabTable(raw) {
     if (addedAny) rowCount++;
   });
 
-  return withFixtureEquipment({
+  return {
     equipToStations: mapValues(equipToStations, (s) => [...s].sort()),
     stationEquip: mapValues(stationEquip, (s) => [...s].sort()),
     rowCount,
     errors,
-  });
+  };
 }
 
 function mapValues(obj, fn) {
   const out = {};
   for (const k in obj) out[k] = fn(obj[k]);
   return out;
-}
-
-// The 5 baseline fixtures are equipment at their own fixed location, present in
-// every parsed table regardless of what was pasted — retrieving from
-// consumables or disposing of waste is itself equipment to use, not just a
-// destination on the map.
-function withFixtureEquipment(result) {
-  for (const [station, equipment] of Object.entries(FIXTURE_EQUIPMENT)) {
-    const stations = new Set(result.equipToStations[equipment] || []);
-    stations.add(station);
-    result.equipToStations[equipment] = [...stations].sort();
-
-    const equipHere = new Set(result.stationEquip[station] || []);
-    equipHere.add(equipment);
-    result.stationEquip[station] = [...equipHere].sort();
-  }
-  return result;
 }

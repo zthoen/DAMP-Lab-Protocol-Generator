@@ -76,7 +76,7 @@ export function generateProtocols(equipToStations, opts = {}) {
 
   const stationEquip = {};
   for (const e of equipment) for (const s of equipToStations[e]) (stationEquip[s] ??= []).push(e);
-  const consumEquip = stationEquip.CONSUM || [];
+  const consumEquip = stationEquip.CONSUM2 || [];
   if (consumEquip.length === 0) warnings.push("No equipment mapped to Consumables 2 — protocols won't open with a retrieval step.");
   if (!stationEquip.SHARPS?.length && !stationEquip.WASTE?.length) {
     warnings.push("No equipment mapped to the Sharps Bin or Biohazard Waste — protocols won't close with a disposal step.");
@@ -95,12 +95,12 @@ export function generateProtocols(equipToStations, opts = {}) {
 
     if (opensWithRetrieve) {
       const equip = pick(rng, consumEquip);
-      steps.push({ equipment: equip, station: "CONSUM", action: classifyStepType(equip) });
-      prevStation = "CONSUM";
+      steps.push({ equipment: equip, station: "CONSUM2", action: classifyStepType(equip) });
+      prevStation = "CONSUM2";
       prevEquip = equip;
     }
 
-    const reserved = new Set([...(opensWithRetrieve ? ["CONSUM"] : []), ...disposal]);
+    const reserved = new Set([...(opensWithRetrieve ? ["CONSUM2"] : []), ...disposal]);
     const middleCount = nSteps - steps.length - disposal.length;
     for (let i = 0; i < middleCount; i++) {
       let candidates = equipment.filter((e) => e !== prevEquip && equipToStations[e].some((s) => s !== prevStation && !reserved.has(s)));
