@@ -43,9 +43,11 @@ test("BENCH_DIST_FT lookup matches routeDistanceFt for every pair", () => {
   for (const a of ids) for (const b of ids) assert.equal(BENCH_DIST_FT[a][b], routeDistanceFt(a, b));
 });
 
-test("the 5 baseline fixtures are valid stations alongside the 24 benches", () => {
-  assert.equal(STATION_IDS.length, 29);
-  for (const id of ["SHARPS", "RECYCLE", "WASTE", "SINK", "CONSUM"]) assert.ok(STATION_IDS.includes(id));
+test("the 8 fixtures are valid stations alongside the 24 benches", () => {
+  assert.equal(STATION_IDS.length, 32);
+  for (const id of ["SHARPS", "RECYCLE", "WASTE", "SINK", "PIPETTE", "GLASSWARE", "CONSUM", "FREEZER"]) {
+    assert.ok(STATION_IDS.includes(id));
+  }
 });
 
 test("every station has a fixed name, and every name resolves back to its station", () => {
@@ -101,8 +103,20 @@ test("the trio and the far pair are on opposite sides of the same walkway", () =
   assert.equal(routeDistanceFt("SHARPS", "SINK"), routeDistanceFt("B3", "SINK"));
 });
 
+test("the far row orders sink, pipette tips, glassware, wellplates/tubes left to right", () => {
+  assert.ok(routeDistanceFt("SINK", "PIPETTE") < routeDistanceFt("SINK", "GLASSWARE"));
+  assert.ok(routeDistanceFt("SINK", "GLASSWARE") < routeDistanceFt("SINK", "CONSUM"));
+});
+
+test("the freezer is a far fixture, reachable like any other far fixture", () => {
+  assert.ok(routeDistanceFt("A1", "FREEZER") > 0);
+  assert.equal(routeDistanceFt("FREEZER", "FREEZER"), 0);
+  // Far from column H, since it sits just past it.
+  assert.ok(routeDistanceFt("H3", "FREEZER") < routeDistanceFt("A3", "FREEZER"));
+});
+
 test("routeWaypoints for a fixture ends at its own center and starts at a real point", () => {
-  for (const id of ["SHARPS", "RECYCLE", "WASTE", "SINK", "CONSUM"]) {
+  for (const id of ["SHARPS", "RECYCLE", "WASTE", "SINK", "PIPETTE", "GLASSWARE", "CONSUM", "FREEZER"]) {
     const pts = routeWaypoints("A1", id);
     assert.deepEqual(pts[pts.length - 1], center(id), `${id} path should end at its center`);
     assert.equal(typeof pts[0].x, "number");

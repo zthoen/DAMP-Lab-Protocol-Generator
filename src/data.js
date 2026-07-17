@@ -6,10 +6,10 @@
 
 // Real-world reference measurements the protocol generator's "distance walked" is
 // built from (see routeDistanceFt below) — approximate, as given by the lab:
-// benches are ~7ft long (front-to-back) and ~3ft wide (side-to-side), walkways
+// benches are ~6ft long (front-to-back) and ~2.5ft wide (side-to-side), walkways
 // are ~6ft wide, and the walkway past row 3 is ~5ft wide.
-export const BENCH_LEN_FT = 7;
-export const BENCH_WIDTH_FT = 3;
+export const BENCH_LEN_FT = 6;
+export const BENCH_WIDTH_FT = 2.5;
 export const WALKWAY_WIDTH_FT = 6;
 export const BACK_AISLE_FT = 5;
 
@@ -39,9 +39,13 @@ const walkwayCenterX = (g) => {
 
 /* Fixed utility fixtures — baselines that never move. The sharps bin, recycling
    bin, and biohazard box sit touching the bottom of row 3 (the end of columns B
-   and C), exactly like a 4th row with nothing beyond it. The sink and
-   consumables storage sit on the *far* side of the back walkway, directly across
-   from that trio. Real dimensions (feet) are kept as "length" (the top-to-bottom
+   and C), exactly like a 4th row with nothing beyond it. The sink, pipette tips/
+   reservoirs, glassware, and wellplates/tubes storage sit in a row on the *far*
+   side of the back walkway, directly across from that trio (left to right:
+   sink, pipette tips/reservoirs, glassware, wellplates/tubes — pipette tips is
+   between the sink and glassware, glassware is directly left of wellplates/
+   tubes). The 4C freezer sits on that same far side, off on its own past the
+   last column. Real dimensions (feet) are kept as "length" (the top-to-bottom
    extent, facing the wall) x "width" (the left-to-right extent), scaled up for
    map legibility since a couple of feet would otherwise round to an unreadable
    box. */
@@ -50,7 +54,9 @@ const FIXTURE_GAP = 12;
 const box = (lengthFt, widthFt) => ({ w: Math.round(widthFt * FIXTURE_PX_PER_FT), h: Math.round(lengthFt * FIXTURE_PX_PER_FT) });
 
 const sharpsBox = box(2, 1), recycleBox = box(1.5, 3), wasteBox = box(2, 2);
-const sinkBox = box(2, 4), consumBox = box(2, 6); // consumables widened +2ft over the sink's width
+const sinkBox = box(2.5, 5);
+const pipetteBox = box(2.25, 4), glasswareBox = box(2.25, 4), consumBox = box(2.25, 4);
+const freezerBox = box(2.5, 5);
 
 // The trio's top edge touches row 3's bottom edge directly (no gap), chained
 // left to right and centered on the B-C walkway boundary they straddle.
@@ -69,41 +75,64 @@ export const BACK_AISLE_H = 34;
 const BACK_AISLE_TOP = BACK_AISLE_Y - BACK_AISLE_H / 2;
 const BACK_AISLE_BOTTOM = BACK_AISLE_Y + BACK_AISLE_H / 2;
 
-// The sink/consumables pair sits below the back walkway (the far side from the
-// trio), moved left so it's centered on the same B-C boundary — directly across
-// the walkway from the sharps/recycling/biohazard group.
+// The sink/pipette-tips/glassware/wellplates row sits below the back walkway
+// (the far side from the trio), centered on the same B-C boundary — directly
+// across the walkway from the sharps/recycling/biohazard group.
 const FAR_TOP_Y = BACK_AISLE_BOTTOM + 22; // headroom for the ID label above the box
-const farWidth = sinkBox.w + FIXTURE_GAP + consumBox.w;
-const sinkX = midBC - farWidth / 2;
-const consumX = sinkX + sinkBox.w + FIXTURE_GAP;
+const farRowWidth = sinkBox.w + FIXTURE_GAP + pipetteBox.w + FIXTURE_GAP + glasswareBox.w + FIXTURE_GAP + consumBox.w;
+const sinkX = midBC - farRowWidth / 2;
+const pipetteX = sinkX + sinkBox.w + FIXTURE_GAP;
+const glasswareX = pipetteX + pipetteBox.w + FIXTURE_GAP;
+const consumX = glasswareX + glasswareBox.w + FIXTURE_GAP;
+
+// The freezer sits on the same far side, off past the last column — 5ft to the
+// right of H3, across the walkway from it (same FAR_TOP_Y as the rest of the
+// far row, since it's the same "beyond the back walkway" distance, just far to
+// the right instead of centered near B-C).
+const freezerX = COL_X.H + SLOT_W + 5 * FIXTURE_PX_PER_FT;
 
 export const FIXTURES = {
   SHARPS: { name: "Sharps Bin", x: sharpsX, y: TRIO_TOP_Y, w: sharpsBox.w, h: sharpsBox.h },
   RECYCLE: { name: "Recycling Bin", x: recycleX, y: TRIO_TOP_Y, w: recycleBox.w, h: recycleBox.h },
   WASTE: { name: "Biohazard Waste", x: wasteX, y: TRIO_TOP_Y, w: wasteBox.w, h: wasteBox.h },
   SINK: { name: "Sink", x: sinkX, y: FAR_TOP_Y, w: sinkBox.w, h: sinkBox.h },
-  CONSUM: { name: "Consumables Storage", x: consumX, y: FAR_TOP_Y, w: consumBox.w, h: consumBox.h },
+  PIPETTE: { name: "Pipette Tips / Reservoirs", x: pipetteX, y: FAR_TOP_Y, w: pipetteBox.w, h: pipetteBox.h },
+  GLASSWARE: { name: "Glassware", x: glasswareX, y: FAR_TOP_Y, w: glasswareBox.w, h: glasswareBox.h },
+  CONSUM: { name: "Wellplates / Tubes", x: consumX, y: FAR_TOP_Y, w: consumBox.w, h: consumBox.h },
+  FREEZER: { name: "4C Freezer", x: freezerX, y: FAR_TOP_Y, w: freezerBox.w, h: freezerBox.h },
 };
 
-// Each fixture is also a piece of equipment in its own right, permanently
-// "installed" at its own location — retrieving from consumables or disposing
-// of waste is itself a protocol step, not just a destination. labTable.js adds
-// these to every parsed table's equipToStations/stationEquip unconditionally,
-// regardless of what the pasted data says, since they're baseline lab fixtures
-// that are always physically present.
+// Each of these 5 fixtures is also a piece of equipment in its own right,
+// permanently "installed" at its own location — retrieving from wellplates/
+// tubes storage or disposing of waste is itself a protocol step, not just a
+// destination. labTable.js adds these to every parsed table's
+// equipToStations/stationEquip unconditionally, regardless of what the pasted
+// data says, since they're baseline lab fixtures that are always physically
+// present. Glassware, pipette tips/reservoirs, and the 4C freezer are just
+// destinations on the map, like a bench — nothing is auto-installed there.
 export const FIXTURE_EQUIPMENT = {
   SHARPS: "Sharps",
   RECYCLE: "Recycle",
   WASTE: "Biohazardous Waste",
   SINK: "Sink",
-  CONSUM: "Consumables",
+  CONSUM: "Wellplates / Tubes",
 };
 
 // The trio (touching row 3, reached via whichever of B's or C's own walkway is
-// closer — never a separate back-walkway crossing) vs. the far pair (genuinely
-// beyond the back walkway, like the fixtures in the previous layout).
+// closer — never a separate back-walkway crossing) vs. everything else beyond
+// the back walkway (genuinely across it, like the fixtures in the previous
+// layout). FAR_FEETX values are lateral feet along the far side, purely for the
+// distance model — they tell the same qualitative story as the pixel layout
+// above (sink, pipette tips, glassware, wellplates/tubes in that order, with
+// the freezer far off past column H) without needing to be derived from it.
 const NEAR_FIXTURES = { SHARPS: ["B"], WASTE: ["C"], RECYCLE: ["B", "C"] };
-const FAR_FEETX = { SINK: 4, CONSUM: 8 };
+const FAR_FEETX = {
+  SINK: 0,
+  PIPETTE: 4,
+  GLASSWARE: 8,
+  CONSUM: 12,
+  FREEZER: COL_ORDER.indexOf("H") * BENCH_WIDTH_FT + 5,
+};
 const isNearFixture = (id) => Object.prototype.hasOwnProperty.call(NEAR_FIXTURES, id);
 const isFarFixture = (id) => Object.prototype.hasOwnProperty.call(FAR_FEETX, id);
 export const isFixtureId = (id) => isNearFixture(id) || isFarFixture(id);
@@ -113,14 +142,18 @@ export { isNearFixture };
 
 // Vertical walkway rectangles extended down to meet the back walkway with no
 // gap, plus the back walkway itself — together they render as one continuous
-// shaded region (a comb shape) rather than 5 separate boxes.
+// shaded region (a comb shape) rather than 5 separate boxes. The back walkway
+// runs wide enough to reach past the freezer, so it reads as one continuous
+// walkway rather than an unmarked gap between the far row and the freezer.
 export const WALKWAYS = WALKWAY_GROUPS.map(([l, r]) => ({
   x: COL_X[l] + SLOT_W,
   width: COL_X[r] - (COL_X[l] + SLOT_W),
   y: ROW_Y[1],
   height: BACK_AISLE_TOP - ROW_Y[1],
 }));
-export const BACK_AISLE = { x: 20, y: BACK_AISLE_TOP, width: 760, height: BACK_AISLE_H };
+const FLOOR_X = 20;
+const floorRightEdge = freezerX + freezerBox.w + FLOOR_X;
+export const BACK_AISLE = { x: FLOOR_X, y: BACK_AISLE_TOP, width: floorRightEdge - FLOOR_X, height: BACK_AISLE_H };
 
 // A single outline tracing the 4 prongs + the back-aisle bar as one comb-shaped
 // polygon, so the map can fill/stroke it as one continuous region instead of 5

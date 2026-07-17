@@ -42,8 +42,8 @@ B↔C move still has to detour via the back walkway). `front(id)` returns the po
 a bench's edge that actually opens onto its walkway (used by both the distance and
 pixel-path functions below, never a bench's raw center).
 
-Distance is modeled on real measurements, not pixels: `BENCH_LEN_FT` (~7ft, the
-vertical hop between rows within a walkway), `BENCH_WIDTH_FT` (~3ft, the lateral
+Distance is modeled on real measurements, not pixels: `BENCH_LEN_FT` (~6ft, the
+vertical hop between rows within a walkway), `BENCH_WIDTH_FT` (~2.5ft, the lateral
 space one column takes up — used for every column-to-column distance), `WALKWAY_
 WIDTH_FT` (~6ft, the lateral crossing when two columns share one walkway),
 `BACK_AISLE_FT` (~5ft, the back walkway's one-time crossing when two stations are on
@@ -59,16 +59,22 @@ whatever walkway(s) it uses, to the front and then the center of the destination
 so the map's path overlay always reads as "walk to the aisle, use it, arrive," never
 a line cutting through a bench.
 
-**Fixed utility fixtures (`src/data.js` `FIXTURES`)** — 5 baseline destinations that
+**Fixed utility fixtures (`src/data.js` `FIXTURES`)** — 8 baseline destinations that
 never move and are otherwise treated exactly like a bench, split across the back
 walkway into two groups. The **trio** (sharps bin, recycling bin, biohazard box)
 sits touching the bottom of row 3 — the sharps bin at the end of column B, the
 biohazard box at the end of column C, recycling between them — with *no* gap, like
-a 4th row with nothing beyond it. The **far pair** (sink, consumables storage) sits
-on the opposite side of the back walkway, directly across from the trio. Real
-footprints (feet) are kept as *length* (the top-to-bottom extent, facing the wall) ×
-*width* (the left-to-right extent) and scaled up for map legibility — a 1-2ft bin
-would otherwise round to an unreadable box.
+a 4th row with nothing beyond it. The **far row** sits on the opposite side of the
+back walkway, directly across from the trio: sink, pipette tips/reservoirs,
+glassware, and wellplates/tubes storage, chained left to right and centered on the
+same B-C boundary as the trio (pipette tips/reservoirs sits between the sink and
+glassware; glassware sits directly left of wellplates/tubes). The **4C freezer**
+is also beyond the back walkway but off on its own, 5ft to the right of H3, past
+the last column — same distance-model semantics as the far row, just positioned
+far to the right instead of centered near B-C. Real footprints (feet) are kept as
+*length* (the top-to-bottom extent, facing the wall) × *width* (the left-to-right
+extent) and scaled up for map legibility — a 1-2ft bin would otherwise round to an
+unreadable box.
 
 Every fixture is a full member of `STATION_IDS`, so it's a valid `Station Location`
 in a pasted table and participates in `BENCH_DIST_FT`/`routeWaypoints` like any
@@ -76,11 +82,14 @@ bench. Distance-wise, the trio is *aliased* to its anchor column's row-3 bench �
 `routeDistanceFt("B3", "SHARPS")` is 0, `routeDistanceFt("B1", "SHARPS")` is exactly
 `routeDistanceFt("B1", "B3")` — recycling straddles both B and C, so it resolves to
 whichever is closer (`NEAR_FIXTURES` lists each trio member's anchor column(s); the
-alias resolution is the first branch of `routeDistanceFt`). The far pair works like
-the fixtures in earlier iterations of this map: reaching one from a bench always
-costs one back-walkway crossing, and two far fixtures are pure lateral distance
-apart (`FAR_FEETX`). A trio member reaching a far fixture (or vice versa) still
-crosses the back walkway once, same as any bench would.
+alias resolution is the first branch of `routeDistanceFt`). Everything else
+(the far row, plus the freezer) works like the far pair in earlier iterations of
+this map: reaching one from a bench always costs one back-walkway crossing, and two
+far fixtures are pure lateral distance apart (`FAR_FEETX` — purely a distance-model
+coordinate, not derived from the pixel layout, though it's kept in the same
+left-to-right order: sink, pipette tips/reservoirs, glassware, wellplates/tubes,
+then the freezer far off past column H). A trio member reaching a far fixture (or
+vice versa) still crosses the back walkway once, same as any bench would.
 
 Because a fixture is only a couple of feet across, it can't hold an ID or name
 inside its own box the way a bench does — `LabMap.jsx` prints its code outside the
@@ -90,7 +99,7 @@ for the far pair, which has headroom) and leaves the full name to the hover pane
 to decide label placement and, for routing, to reuse the same "fixture-involving
 paths go via the back-walkway rail" pixel logic for both groups.
 
-Every station — all 24 benches plus the 5 fixtures — has exactly one fixed,
+Every station — all 24 benches plus the 8 fixtures — has exactly one fixed,
 hardcoded name (`BENCH_NAMES` for the benches, merged with each fixture's own
 `name` into `STATION_NAME`, keyed by station id). These are the lab's real
 station names (e.g. `A3` is "Hamilton", `D3` is "PCR") and are never supplied by
@@ -99,21 +108,27 @@ a pasted table — `NAME_TO_STATION_ID` is the case-insensitive reverse lookup
 SHARPS-style ids stay purely internal, driving the geometry/distance model and
 map layout; nothing user-facing needs to know them.
 
-Each fixture is also a piece of equipment in its own right, permanently
-"installed" at its own station — `FIXTURE_EQUIPMENT` (`data.js`) names one
-("Sharps", "Recycle", "Biohazardous Waste", "Sink", "Consumables") per fixture.
+5 of the 8 fixtures (sharps, recycling, biohazard waste, sink, wellplates/tubes)
+are also a piece of equipment in their own right, permanently "installed" at
+their own station — `FIXTURE_EQUIPMENT` (`data.js`) names one ("Sharps",
+"Recycle", "Biohazardous Waste", "Sink", "Wellplates / Tubes") per fixture.
 `parseLabTable` (`labTable.js`) injects these into every parsed table's
 `equipToStations`/`stationEquip` unconditionally, even on an empty paste, since
 they're baseline lab equipment that's always physically present regardless of
-what a user's table says. Retrieving from consumables or disposing of waste is
-therefore an ordinary equipment step like any other, not a special-cased
-destination — see the retrieve/dispose bookend below, which relies on this to
-always have equipment to work with.
+what a user's table says. Retrieving from wellplates/tubes storage or disposing
+of waste is therefore an ordinary equipment step like any other, not a
+special-cased destination — see the retrieve/dispose bookend below, which
+relies on this to always have equipment to work with. Pipette tips/reservoirs,
+glassware, and the 4C freezer aren't in `FIXTURE_EQUIPMENT` — they're plain
+destinations on the map, like a bench, with nothing auto-installed there; a
+pasted table can still map real equipment to them by name.
 
 The 4 vertical walkways and the back walkway render as **one continuous shaded
 region** (`WALKWAY_PATH`, a single comb-shaped SVG path) rather than 5 separate
 boxes — the vertical lanes are extended down to meet the back walkway with no gap,
-so there's no seam where they join.
+so there's no seam where they join. The back walkway itself (`BACK_AISLE`) is wide
+enough to reach past the freezer, so the freezer reads as sitting on an extension
+of the same walkway rather than floating past an unmarked gap.
 
 **Table parsing (`src/labTable.js`)** — `parseLabTable(raw)` takes a pasted
 spreadsheet table (tab-separated; falls back to comma-separated, though the comma
@@ -288,8 +303,8 @@ first, not just the sum of each step's own smaller total), and `errors`.
 - Protocol generation is seeded (`mulberry32` in `src/rng.js`) so the same table +
   settings + seed always produce the same protocols — keep any new randomness routed
   through that seeded stream rather than `Math.random()`.
-- The bench grid (`SLOTS` in `data.js`) is fixed at A1–H3, plus the 5 fixed fixtures
-  in `FIXTURES`, and every one of those 29 stations has a fixed name in
+- The bench grid (`SLOTS` in `data.js`) is fixed at A1–H3, plus the 8 fixed fixtures
+  in `FIXTURES`, and every one of those 32 stations has a fixed name in
   `BENCH_NAMES`/`STATION_NAME`; `labTable.js` validates pasted station names against
   `NAME_TO_STATION_ID`, not the ids directly. If the grid ever needs to grow (more
   rows/columns, storage aisles back in scope), a fixture's dimensions/position

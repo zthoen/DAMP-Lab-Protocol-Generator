@@ -86,7 +86,7 @@ export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highligh
         )}
         {Object.entries(stepsByStation).map(([id, nums]) => {
           const p = center(id);
-          // A heavily-revisited station (common for equipment like Consumables in a
+          // A heavily-revisited station (common for equipment like Wellplates / Tubes in a
           // long real protocol) would otherwise grow one wide badge that overlaps
           // its neighbors' boxes — instead, the font shrinks a step as the count
           // grows, and the numbers wrap onto as many rows as needed, so every badge

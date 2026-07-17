@@ -77,7 +77,7 @@ export function generateProtocols(equipToStations, opts = {}) {
   const stationEquip = {};
   for (const e of equipment) for (const s of equipToStations[e]) (stationEquip[s] ??= []).push(e);
   const consumEquip = stationEquip.CONSUM || [];
-  if (consumEquip.length === 0) warnings.push("No equipment mapped to Consumables Storage — protocols won't open with a retrieval step.");
+  if (consumEquip.length === 0) warnings.push("No equipment mapped to Wellplates / Tubes storage — protocols won't open with a retrieval step.");
   if (!stationEquip.SHARPS?.length && !stationEquip.WASTE?.length) {
     warnings.push("No equipment mapped to the Sharps Bin or Biohazard Waste — protocols won't close with a disposal step.");
   }

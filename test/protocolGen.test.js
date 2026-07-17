@@ -84,7 +84,7 @@ Used Pipette Tips\tSharps Bin
 Paper Waste\tRecycling Bin
 Autoclave Bags\tBiohazard Waste
 Glassware\tSink
-Pipette Tips Restock\tConsumables Storage
+Pipette Tips Restock\tWellplates / Tubes
 `.trim());
   assert.equal(fixtureTable.errors.length, 0);
   const { protocols } = generateProtocols(fixtureTable.equipToStations, { count: 2, minSteps: 2, maxSteps: 2, seed: 1 });
@@ -102,7 +102,7 @@ Gel Doc\tGel Imaging
 Microscope\tResearch
 Used Pipette Tips\tSharps Bin
 Autoclave Bags\tBiohazard Waste
-Pipette Tips Restock\tConsumables Storage
+Pipette Tips Restock\tWellplates / Tubes
 `.trim());
 
 test("the shared full-table test fixture parses with no errors", () => {
@@ -155,7 +155,7 @@ test("equipToStations without consumables/waste mapped warns and skips the booke
   // generateProtocols' own graceful-degradation path directly, bypassing that.
   const equipToStations = { Pipette: ["A1"], Centrifuge: ["D2"], Microscope: ["G1"] };
   const out = generateProtocols(equipToStations, { count: 5, minSteps: 3, maxSteps: 5, seed: 9 });
-  assert.ok(out.warnings.some((w) => /Consumables/.test(w)));
+  assert.ok(out.warnings.some((w) => /Wellplates/.test(w)));
   assert.ok(out.warnings.some((w) => /Sharps|Biohazard/.test(w)));
   for (const p of out.protocols) assert.notEqual(p.steps[0].station, "CONSUM");
 });
@@ -168,7 +168,7 @@ test("a table parsed with no fixtures mentioned still opens/closes with the base
   // RECYCLE/SINK that the random walk happened to miss) isn't held to the bookend rule.
   for (const p of protocols.slice(0, count)) {
     assert.equal(p.steps[0].station, "CONSUM", `${p.id} didn't open at CONSUM`);
-    assert.equal(p.steps[0].equipment, "Consumables");
+    assert.equal(p.steps[0].equipment, "Wellplates / Tubes");
     const last = p.steps[p.steps.length - 1];
     assert.ok(last.station === "SHARPS" || last.station === "WASTE", `${p.id} closed at ${last.station}, not a disposal bin`);
     assert.ok(last.equipment === "Sharps" || last.equipment === "Biohazardous Waste");
