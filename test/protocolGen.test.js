@@ -65,8 +65,10 @@ test("protocols are titled 'Protocol 1', 'Protocol 2', ...", () => {
   protocols.forEach((p, i) => assert.equal(p.id, `Protocol ${i + 1}`));
 });
 
-test("a table with no equipment at the fixtures adds no extra protocol beyond count", () => {
-  const { equipToStations } = table(); // none of these map to SHARPS/RECYCLE/WASTE/SINK/CONSUM
+test("equipToStations with no fixtures mapped at all adds no extra protocol beyond count", () => {
+  // parseLabTable always injects the 5 baseline fixtures now, so this exercises
+  // generateProtocols' own graceful-degradation path directly, bypassing that.
+  const equipToStations = { Pipette: ["A1"], Centrifuge: ["D2"], Microscope: ["G1"] };
   const { protocols } = generateProtocols(equipToStations, { count: 5, minSteps: 3, maxSteps: 5, seed: 9 });
   assert.equal(protocols.length, 5);
 });
@@ -137,10 +139,27 @@ test("bookend steps are still forced even when minSteps/maxSteps is too tight to
   }
 });
 
-test("a table without consumables/waste equipment warns and skips the bookend steps", () => {
-  const { equipToStations } = table(); // the base fixture maps nothing to CONSUM/SHARPS/WASTE
+test("equipToStations without consumables/waste mapped warns and skips the bookend steps", () => {
+  // parseLabTable always injects the 5 baseline fixtures now, so this exercises
+  // generateProtocols' own graceful-degradation path directly, bypassing that.
+  const equipToStations = { Pipette: ["A1"], Centrifuge: ["D2"], Microscope: ["G1"] };
   const out = generateProtocols(equipToStations, { count: 5, minSteps: 3, maxSteps: 5, seed: 9 });
   assert.ok(out.warnings.some((w) => /Consumables/.test(w)));
   assert.ok(out.warnings.some((w) => /Sharps|Biohazard/.test(w)));
   for (const p of out.protocols) assert.notEqual(p.steps[0].station, "CONSUM");
+});
+
+test("a table parsed with no fixtures mentioned still opens/closes with the baseline fixture equipment", () => {
+  const { equipToStations } = table(); // none of these rows mention SHARPS/RECYCLE/WASTE/SINK/CONSUM
+  const count = 8;
+  const { protocols } = generateProtocols(equipToStations, { count, minSteps: 4, maxSteps: 7, seed: 14 });
+  // Only the main batch — an auto-appended coverage protocol (for a fixture like
+  // RECYCLE/SINK that the random walk happened to miss) isn't held to the bookend rule.
+  for (const p of protocols.slice(0, count)) {
+    assert.equal(p.steps[0].station, "CONSUM", `${p.id} didn't open at CONSUM`);
+    assert.equal(p.steps[0].equipment, "Consumables");
+    const last = p.steps[p.steps.length - 1];
+    assert.ok(last.station === "SHARPS" || last.station === "WASTE", `${p.id} closed at ${last.station}, not a disposal bin`);
+    assert.ok(last.equipment === "Sharps" || last.equipment === "Biohazardous Waste");
+  }
 });

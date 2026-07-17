@@ -85,6 +85,20 @@ export const FIXTURES = {
   CONSUM: { name: "Consumables Storage", x: consumX, y: FAR_TOP_Y, w: consumBox.w, h: consumBox.h },
 };
 
+// Each fixture is also a piece of equipment in its own right, permanently
+// "installed" at its own location — retrieving from consumables or disposing
+// of waste is itself a protocol step, not just a destination. labTable.js adds
+// these to every parsed table's equipToStations/stationEquip unconditionally,
+// regardless of what the pasted data says, since they're baseline lab fixtures
+// that are always physically present.
+export const FIXTURE_EQUIPMENT = {
+  SHARPS: "Sharps",
+  RECYCLE: "Recycle",
+  WASTE: "Biohazardous Waste",
+  SINK: "Sink",
+  CONSUM: "Consumables",
+};
+
 // The trio (touching row 3, reached via whichever of B's or C's own walkway is
 // closer — never a separate back-walkway crossing) vs. the far pair (genuinely
 // beyond the back walkway, like the fixtures in the previous layout).

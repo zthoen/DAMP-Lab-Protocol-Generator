@@ -7,13 +7,15 @@ const pick = (rng, arr) => arr[Math.floor(rng() * arr.length)];
 const FIXTURE_IDS = STATION_IDS.filter(isFixtureId);
 const DOUBLE_DISPOSAL_CHANCE = 0.3; // how often a protocol disposes at *both* bins, not just one
 
-// One equipment can live at several stations (EQUIP_LOCS-style); of its stations,
-// return the one farthest from `from` (by the actual walking route, not a straight
-// line — see routeDistanceFt in data.js) so picking that equipment actually forces a
-// walk, not just a coin-flip.
-function farthestStation(stations, from) {
-  if (!from) return stations[0];
-  return stations.reduce((best, s) => (BENCH_DIST_FT[from][s] > BENCH_DIST_FT[from][best] ? s : best), stations[0]);
+// One equipment can live at several stations (EQUIP_LOCS-style); of its stations
+// that aren't off-limits (see `avoid` below), return the one farthest from `from`
+// (by the actual walking route, not a straight line — see routeDistanceFt in
+// data.js) so picking that equipment actually forces a walk, not just a coin-flip.
+function farthestStation(stations, from, avoid) {
+  const usable = avoid ? stations.filter((s) => !avoid.has(s)) : stations;
+  const pool = usable.length ? usable : stations;
+  if (!from) return pool[0];
+  return pool.reduce((best, s) => (BENCH_DIST_FT[from][s] > BENCH_DIST_FT[from][best] ? s : best), pool[0]);
 }
 
 function travelFtOf(steps) {
@@ -56,7 +58,12 @@ function pickDisposalStations(rng, stationEquip) {
    over a large equipment pool can still miss them across a small batch — so after
    the normal draw, any fixture with equipment mapped to it that no generated step
    visited gets one extra "coverage" protocol appended, walking to each missed
-   fixture in turn. */
+   fixture in turn.
+
+   The random walk that fills the middle steers clear of consumables storage and
+   whichever bin(s) close the protocol out — those are reserved for the bookend, so
+   a step there always means the real retrieve/dispose, never an incidental repeat
+   that could otherwise land right next to the bookend step at the same station. */
 export function generateProtocols(equipToStations, opts = {}) {
   const { count = 10, minSteps = 4, maxSteps = 8, seed = 1234 } = opts;
   const equipment = Object.keys(equipToStations);
@@ -93,14 +100,16 @@ export function generateProtocols(equipToStations, opts = {}) {
       prevEquip = equip;
     }
 
+    const reserved = new Set([...(opensWithRetrieve ? ["CONSUM"] : []), ...disposal]);
     const middleCount = nSteps - steps.length - disposal.length;
     for (let i = 0; i < middleCount; i++) {
-      let candidates = equipment.filter((e) => e !== prevEquip && equipToStations[e].some((s) => s !== prevStation));
+      let candidates = equipment.filter((e) => e !== prevEquip && equipToStations[e].some((s) => s !== prevStation && !reserved.has(s)));
+      if (candidates.length === 0) candidates = equipment.filter((e) => e !== prevEquip && equipToStations[e].some((s) => s !== prevStation));
       if (candidates.length === 0) candidates = equipment.filter((e) => e !== prevEquip);
       if (candidates.length === 0) candidates = equipment;
 
       const equip = pick(rng, candidates);
-      const station = farthestStation(equipToStations[equip], prevStation);
+      const station = farthestStation(equipToStations[equip], prevStation, reserved);
       steps.push({ equipment: equip, station, action: classifyStepType(equip) });
       prevStation = station;
       prevEquip = equip;

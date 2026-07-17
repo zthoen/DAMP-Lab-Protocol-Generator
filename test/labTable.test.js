@@ -90,3 +90,19 @@ test("the 5 baseline fixtures are valid station locations, same as a bench code"
   assert.deepEqual(t.equipToStations["Autoclave Bags"], ["WASTE"]);
   assert.deepEqual(t.equipToStations["Used Tips"], ["SHARPS"]); // lowercase input normalizes to uppercase
 });
+
+test("the 5 fixtures are always present as their own baseline equipment, even on an empty paste", () => {
+  const t = parseLabTable("");
+  assert.deepEqual(t.equipToStations["Sharps"], ["SHARPS"]);
+  assert.deepEqual(t.equipToStations["Recycle"], ["RECYCLE"]);
+  assert.deepEqual(t.equipToStations["Biohazardous Waste"], ["WASTE"]);
+  assert.deepEqual(t.equipToStations["Sink"], ["SINK"]);
+  assert.deepEqual(t.equipToStations["Consumables"], ["CONSUM"]);
+  for (const id of ["SHARPS", "RECYCLE", "WASTE", "SINK", "CONSUM"]) assert.equal(t.stationEquip[id].length, 1);
+});
+
+test("a pasted row at a fixture station adds alongside the baseline fixture equipment, not instead of it", () => {
+  const raw = "Autoclave Bags\tBiohazard Disposal\tWASTE";
+  const t = parseLabTable(raw);
+  assert.deepEqual(t.stationEquip["WASTE"], ["Autoclave Bags", "Biohazardous Waste"]);
+});

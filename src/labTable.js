@@ -1,4 +1,4 @@
-import { STATION_IDS } from "./data.js";
+import { STATION_IDS, FIXTURE_EQUIPMENT } from "./data.js";
 
 export const isValidStationCode = (code) => STATION_IDS.includes(code);
 const HEADER_WORDS = /^(equipment|instrument|device)$/i;
@@ -22,7 +22,7 @@ const splitMulti = (cell) => (cell || "").split(/[,;]/).map((c) => c.trim()).fil
 export function parseLabTable(raw) {
   const lines = String(raw || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const errors = [];
-  if (lines.length === 0) return { equipToStations: {}, stationEquip: {}, stationNames: {}, rowCount: 0, errors };
+  if (lines.length === 0) return withFixtureEquipment({ equipToStations: {}, stationEquip: {}, stationNames: {}, rowCount: 0, errors });
 
   let rows = lines.map(splitRow);
   const [first] = rows;
@@ -57,17 +57,34 @@ export function parseLabTable(raw) {
     if (addedAny) rowCount++;
   });
 
-  return {
+  return withFixtureEquipment({
     equipToStations: mapValues(equipToStations, (s) => [...s].sort()),
     stationEquip: mapValues(stationEquip, (s) => [...s].sort()),
     stationNames: mapValues(stationNames, (s) => [...s]),
     rowCount,
     errors,
-  };
+  });
 }
 
 function mapValues(obj, fn) {
   const out = {};
   for (const k in obj) out[k] = fn(obj[k]);
   return out;
+}
+
+// The 5 baseline fixtures are equipment at their own fixed location, present in
+// every parsed table regardless of what was pasted — retrieving from
+// consumables or disposing of waste is itself equipment to use, not just a
+// destination on the map.
+function withFixtureEquipment(result) {
+  for (const [station, equipment] of Object.entries(FIXTURE_EQUIPMENT)) {
+    const stations = new Set(result.equipToStations[equipment] || []);
+    stations.add(station);
+    result.equipToStations[equipment] = [...stations].sort();
+
+    const equipHere = new Set(result.stationEquip[station] || []);
+    equipHere.add(equipment);
+    result.stationEquip[station] = [...equipHere].sort();
+  }
+  return result;
 }

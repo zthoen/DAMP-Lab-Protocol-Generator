@@ -87,6 +87,17 @@ for the far pair, which has headroom) and leaves the full name to the hover pane
 to decide label placement and, for routing, to reuse the same "fixture-involving
 paths go via the back-walkway rail" pixel logic for both groups.
 
+Each fixture is also a piece of equipment in its own right, permanently
+"installed" at its own station — `FIXTURE_EQUIPMENT` (`data.js`) names one
+("Sharps", "Recycle", "Biohazardous Waste", "Sink", "Consumables") per fixture.
+`parseLabTable` (`labTable.js`) injects these into every parsed table's
+`equipToStations`/`stationEquip` unconditionally, even on an empty paste, since
+they're baseline lab equipment that's always physically present regardless of
+what a user's table says. Retrieving from consumables or disposing of waste is
+therefore an ordinary equipment step like any other, not a special-cased
+destination — see the retrieve/dispose bookend below, which relies on this to
+always have equipment to work with.
+
 The 4 vertical walkways and the back walkway render as **one continuous shaded
 region** (`WALKWAY_PATH`, a single comb-shaped SVG path) rather than 5 separate
 boxes — the vertical lanes are extended down to meet the back walkway with no gap,
@@ -102,10 +113,14 @@ shaker that lives at three benches) — every valid location gets the equipment 
 to it, and station names pair up with locations by position (or the single name is
 reused across all locations if only one is given). Station locations must land on
 the fixed A1–H3 grid; invalid ones are reported per-location without dropping the
-rest of that row. Auto-detects and skips a header row. Returns `equipToStations`
-(equipment → station codes), `stationEquip` (station → equipment list),
-`stationNames` (station → display name(s)), and `errors` so bad paste data is
-visible instead of silently dropped.
+rest of that row. Auto-detects and skips a header row. Before returning,
+`withFixtureEquipment` merges in the 5 baseline `FIXTURE_EQUIPMENT` entries (see
+above) regardless of what was parsed — a pasted row that also maps real equipment
+to a fixture station (e.g. "Autoclave Bags" at `WASTE`) adds alongside the
+baseline entry rather than replacing it. Returns `equipToStations` (equipment →
+station codes), `stationEquip` (station → equipment list), `stationNames`
+(station → display name(s)), and `errors` so bad paste data is visible instead of
+silently dropped.
 
 **Protocol generation (`src/protocolGen.js`)** — `generateProtocols(equipToStations,
 opts)` builds `count` fake protocols, each a random-length (`minSteps`–`maxSteps`)
@@ -128,19 +143,25 @@ Every protocol is bookended: it opens with a retrieve-equipment step at consumab
 storage and closes with a dispose-of-waste step at the sharps bin, the biohazard box,
 or (`DOUBLE_DISPOSAL_CHANCE`, 30% of the time) both back to back in a random order —
 `pickDisposalStations` picks from whichever of the two bins actually has equipment
-mapped to it, so a table missing one just closes with the other, and a table missing
-both drops the requirement rather than inventing a step with no real equipment
-behind it (same graceful-degradation approach as everywhere else: a warning, not a
-crash, and the same pattern would extend to a future bookend rule). `minSteps`/
-`maxSteps` are honored inclusive of these bookend steps, bumped up automatically when
-the configured range is too tight to fit them. The random walk that fills the middle
-doesn't avoid the bookend equipment, so a table can end up visiting a disposal bin
-twice — once incidentally in the middle, once for real at the close.
+mapped to it. In practice that's always true now that `FIXTURE_EQUIPMENT` guarantees
+baseline equipment at every fixture (see above), but `generateProtocols` still
+degrades gracefully — a warning, not a crash — for a raw `equipToStations` built
+some other way that omits them (e.g. called directly, as the tests do, rather than
+through `parseLabTable`). `minSteps`/`maxSteps` are honored inclusive of these
+bookend steps, bumped up automatically when the configured range is too tight to fit
+them. The random walk that fills the middle steers clear of consumables storage and
+whichever bin(s) close the protocol out (the `reserved` set built from
+`opensWithRetrieve`/`disposal` before the middle loop runs) — those stations are
+single, fixed locations with no alternate bench to reroute to, so letting the middle
+walk land on one right before the bookend uses the same station would create a
+same-station repeat the "never camp two steps running" rule can't route around any
+other way.
 
-The other 2 fixtures (recycling, sink) aren't bookend steps, but a random walk over a
-large equipment pool can still miss them across a small batch — so after the normal
-draw, `generateProtocols` checks whether every fixture with equipment mapped to it
-was actually visited by some step; if any weren't, one extra "coverage" protocol is
+The other 2 fixtures (recycling, sink) aren't bookend steps and aren't reserved, so
+they can appear anywhere in the middle walk — but a random walk over a large
+equipment pool can still miss them across a small batch, so after the normal draw,
+`generateProtocols` checks whether every fixture with equipment mapped to it was
+actually visited by some step; if any weren't, one extra "coverage" protocol is
 appended that walks to each missed fixture in turn. This coverage protocol isn't held
 to the bookend rule (it's a single-purpose fixture-visit, not a simulated protocol).
 
