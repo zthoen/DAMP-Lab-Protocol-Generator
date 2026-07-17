@@ -180,16 +180,26 @@ to the bookend rule (it's a single-purpose fixture-visit, not a simulated protoc
 
 **Protocol import (`src/protocolImport.js`)** — `parseProtocol(raw, equipToStations)`
 is the counterpart to `protocolGen.js` for a *real* protocol pasted from a
-spreadsheet, rather than a generated fake one. Columns are `[Step, Substep,
-Equipment]` (extra trailing columns are ignored): a Step cell reads `"N. Name"`
-and — because it comes from a merged spreadsheet cell — only appears on that
-step's first row, every later substep row leaving it blank; a Substep cell is
-strictly `"N.M"` (e.g. `"1.2"`), which is what tells the two apart and is also
-the grouping key (the Step cell is only ever used for its name text, never
-cross-checked against the substep's own step number). Because a blank leading
-cell is meaningful here, lines are only trimmed for the blank-line check, never
-for content — trimming a whole line would strip the leading tab that marks a
-continued step and shift every column over.
+spreadsheet, rather than a generated fake one. The first pasted line is the
+protocol's own name — a single title above the table (e.g. "Overnight Culture
+Prep") — captured into the returned `name`, unless that line already looks like
+a valid data row (its second cell already matches the Substep pattern below),
+which keeps a paste that skips straight to data working unchanged; a bare
+`"Step"` header cell with no name given is also recognized and left out of
+`name` rather than being captured verbatim. An optional header row (e.g. "Step
+\tSubstep\tEquipment") may follow the name line and is skipped the same way.
+After that, columns are `[Step, Substep, Equipment]` (extra trailing columns
+are ignored): a Step cell reads `"N. Name"` and — because it comes from a
+merged spreadsheet cell — only appears on that step's first row, every later
+substep row leaving it blank; a Substep cell is strictly `"N.M"` (e.g.
+`"1.2"`), which is what tells the two apart and is also the grouping key (the
+Step cell is only ever used for its name text, never cross-checked against the
+substep's own step number). Because a blank leading cell is meaningful here,
+lines are only trimmed for the blank-line check, never for content — trimming
+a whole line would strip the leading tab that marks a continued step and shift
+every column over. Error messages' row numbers account for however many
+leading lines (name, header) were skipped, so they still point at the actual
+pasted line.
 
 Each substep's Equipment cell is matched case-insensitively against
 `equipToStations` (the same map `parseLabTable` builds, loaded from whatever's
@@ -205,7 +215,8 @@ the far one. That "previous station" tracking runs across the *whole* protocol,
 not reset per step, so the plotted route is one continuous walk even across step
 boundaries.
 
-Returns `steps` (ascending by number, each with its own `substeps`, `path` — the
+Returns `name` (the protocol's title, or `null` if the paste didn't have one),
+`steps` (ascending by number, each with its own `substeps`, `path` — the
 station-only, null-filtered list for that step's own route — `stationsVisited`,
 and `travelFt`), plus whole-protocol `fullPath`/`fullStationsVisited`/
 `fullTravelFt` computed over the single concatenated path (so the whole-protocol
@@ -214,12 +225,16 @@ first, not just the sum of each step's own smaller total), and `errors`.
 
 **UI (`src/`)** — three tabs driven by `App.jsx`, sharing one parsed `labData`
 (`parseLabTable` over the raw pasted text, memoized in `App.jsx`):
-- `App.jsx`: also owns the raw pasted text's persistence — it's read from
-  `localStorage` (`damp-lab-raw-table` key) on boot via `loadStoredTable`, so the
-  last-used equipment list loads automatically, and a `useEffect` writes it back on
-  every change, so pasting a new table over it overwrites what's stored. Storage
-  errors (private browsing, disabled storage) are swallowed — the app just falls
-  back to a blank table rather than crashing.
+- `App.jsx`: also owns the raw pasted equipment text's persistence — it's read
+  from `localStorage` (`damp-lab-raw-table` key) on boot via `loadStoredTable`, so
+  the last-used equipment list loads automatically, and a `useEffect` writes it
+  back on every change, so pasting a new table over it overwrites what's stored.
+  This is deliberately `localStorage` (survives indefinitely, across browser
+  restarts) since the equipment list is a standing fixture of the lab, unlike the
+  pasted protocol on the Protocol Visualizer tab (see `ProtocolImportTab.jsx`
+  below), which is intentionally session-scoped instead. Storage errors (private
+  browsing, disabled storage) are swallowed — the app just falls back to a blank
+  table rather than crashing.
 - `LabBuilderTab.jsx` (tab label "Equipment Input"): the paste textarea, row-error
   list, and the `LabMap.jsx` render of the resulting station/equipment layout.
 - `ProtocolGeneratorTab.jsx` (tab label "Protocol Generator"): controls for protocol count / min-max steps / seed, a
@@ -236,19 +251,29 @@ first, not just the sum of each step's own smaller total), and `errors`.
   touching the front of every bench it uses and the middle of every walkway it
   transits) — never a dashed line or one cutting through a bench. A station revisited
   by non-consecutive steps gets one merged "1,3"-style badge instead of a second
-  marker silently overlapping the first; past `SAFE_MAX_W` (44px — safely under the
-  ~70px bench spacing) a badge with many revisits collapses to a compact "N×" count
-  instead of listing every step number, so a heavily-revisited station (e.g.
-  Consumables in a long real protocol) can't grow wide enough to overlap its
-  neighbors — the full list is still available via the badge's hover tooltip. Has no
-  simulation state; it only knows what's in the parsed table.
-- `ProtocolImportTab.jsx` (tab label "Protocol Visualizer"): the paste textarea for a real protocol, an error list,
-  and a column of cards beside a `LabMap.jsx` — a "Full Protocol" summary card
-  (selected by default) plus one card per step, each with its own substep table
-  (station/equipment/Read-or-Write, mirroring `ProtocolGeneratorTab`'s card
-  layout); an unresolved substep shows `?` for its station in red instead of a
-  code. Selecting a step highlights just that step's own `path`; the Full
-  Protocol card highlights `fullPath`, the whole route start to finish.
+  marker silently overlapping the first. A busy badge (many revisits, e.g.
+  Consumables in a long real protocol) would otherwise grow one wide pill that
+  overlaps its neighbors — instead `wrapStepNums` packs the step numbers into as
+  few comma-joined rows as fit a safe per-row width (font size also steps down as
+  the count grows: 9px for up to 3 numbers, 8px up to 6, 7px beyond that), so the
+  badge grows taller rather than wider and every number is still shown, never
+  collapsed to a count. Has no simulation state; it only knows what's in the
+  parsed table.
+- `ProtocolImportTab.jsx` (tab label "Protocol Visualizer"): the paste textarea
+  for a real protocol, an error list, and a column of cards beside a `LabMap.jsx`
+  — a summary card for the whole protocol (selected by default, titled from
+  `parsed.name` — the protocol's own pasted name — falling back to "Full
+  Protocol" only if the paste didn't have one) plus one card per step, each with
+  its own substep table (station/equipment/Read-or-Write, mirroring
+  `ProtocolGeneratorTab`'s card layout); an unresolved substep shows `?` for its
+  station in red instead of a code. Selecting a step highlights just that step's
+  own `path`; the summary card highlights `fullPath`, the whole route start to
+  finish. The pasted protocol text itself is persisted to `sessionStorage`
+  (`damp-lab-raw-protocol` key, read on mount / written on every change,
+  mirroring `App.jsx`'s equipment-list persistence) — deliberately
+  `sessionStorage`, not `localStorage`: it should survive a reload within the
+  same browser session but never resurface in a later one, unlike the equipment
+  list.
 - `Controls.jsx`: shared widgets (`NumField`, `Dropdown`, `StatCard`, `InfoDot`,
   `Slider`, `Toggle`, `Section`, `Panel`) carried over from the original sim UI.
 

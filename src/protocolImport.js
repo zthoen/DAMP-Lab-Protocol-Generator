@@ -29,19 +29,28 @@ function travelFtOf(stations) {
   return Math.round(ft);
 }
 
-/* Parses a real protocol pasted from a spreadsheet (tab-separated; falls back to
-   comma-separated) with columns [Step, Substep, Equipment] — extra trailing
-   columns (notes, durations, ...) are ignored. Equipment names are matched
-   case-insensitively against `equipToStations` (the same equipment map the Lab
-   Builder tab loads) to find where each substep happens; if an equipment name
-   isn't a name loaded on the map, that substep is still kept (for the formatted
-   view) but has no station and doesn't contribute to any path. When equipment
-   lives at more than one station, the nearest one to the previous substep's
-   station is used, so the plotted route stays a single continuous walk across
-   the *whole* protocol, not just within one step.
+// A bare header row's first cell (no protocol name given) — kept out of `name`
+// so a paste that skips straight to a header doesn't get labeled "Step".
+const HEADER_WORD = /^step$/i;
 
-   Returns `steps` (one entry per step number, in ascending order, each with its
-   own `substeps`, `path` — the ordered, station-only list for that step's own
+/* Parses a real protocol pasted from a spreadsheet (tab-separated; falls back to
+   comma-separated). The first line is the protocol's own name, a single title
+   above the table (e.g. "Overnight Culture Prep") — unless it's already a valid
+   data row (its Substep cell already looks like "N.M"), which keeps a paste that
+   skips straight to data working unchanged. An optional header row (e.g. "Step
+   \tSubstep\tEquipment") may follow; after that, columns are [Step, Substep,
+   Equipment] — extra trailing columns (notes, durations, ...) are ignored.
+   Equipment names are matched case-insensitively against `equipToStations` (the
+   same equipment map the Equipment Input tab loads) to find where each substep
+   happens; if an equipment name isn't a name loaded on the map, that substep is
+   still kept (for the formatted view) but has no station and doesn't contribute
+   to any path. When equipment lives at more than one station, the nearest one to
+   the previous substep's station is used, so the plotted route stays a single
+   continuous walk across the *whole* protocol, not just within one step.
+
+   Returns `name` (the protocol's title, or null if the paste didn't have one),
+   `steps` (one entry per step number, in ascending order, each with its own
+   `substeps`, `path` — the ordered, station-only list for that step's own
    route — `stationsVisited`, and `travelFt`), `fullPath` (every step's path
    concatenated, for the whole-protocol route), and `errors`. */
 export function parseProtocol(raw, equipToStations = {}) {
@@ -51,19 +60,28 @@ export function parseProtocol(raw, equipToStations = {}) {
   // lines are dropped; individual cells are trimmed after splitting instead.
   const lines = String(raw || "").split(/\r?\n/).filter((l) => l.trim() !== "");
   const errors = [];
-  if (lines.length === 0) return { steps: [], fullPath: [], errors };
+  if (lines.length === 0) return { name: null, steps: [], fullPath: [], errors };
 
   const equipLookup = {};
-  for (const name of Object.keys(equipToStations)) equipLookup[name.toLowerCase()] = name;
+  for (const eq of Object.keys(equipToStations)) equipLookup[eq.toLowerCase()] = eq;
 
   let rows = lines.map(splitRow);
-  if (!SUBSTEP_RE.test(rows[0][1] || "")) rows = rows.slice(1); // header row
+  let name = null;
+  let skipped = 0;
+
+  if (!SUBSTEP_RE.test(rows[0][1] || "")) {
+    const candidate = (rows[0][0] || "").trim();
+    if (!HEADER_WORD.test(candidate)) name = candidate || null;
+    rows = rows.slice(1);
+    skipped++;
+  }
+  if (rows.length > 0 && !SUBSTEP_RE.test(rows[0][1] || "")) { rows = rows.slice(1); skipped++; } // header row
 
   const stepsByNumber = new Map();
   let lastStation = null;
 
   rows.forEach((cols, i) => {
-    const lineNo = i + 2; // +1 for header, +1 for 1-indexing
+    const lineNo = i + skipped + 1; // +1 for 1-indexing
     const stepCell = (cols[0] || "").trim();
     const substepCell = (cols[1] || "").trim();
     const equipment = (cols[2] || "").trim();
@@ -101,5 +119,5 @@ export function parseProtocol(raw, equipToStations = {}) {
   const fullPath = steps.flatMap((s) => s.path);
   const fullStationsVisited = new Set(fullPath).size;
   const fullTravelFt = travelFtOf(fullPath);
-  return { steps, fullPath, fullStationsVisited, fullTravelFt, errors };
+  return { name, steps, fullPath, fullStationsVisited, fullTravelFt, errors };
 }

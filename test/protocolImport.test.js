@@ -99,3 +99,53 @@ test("equipment matching is case-insensitive", () => {
   const { steps } = parseProtocol(raw, equipToStations());
   assert.equal(steps[0].substeps[0].station, "A3");
 });
+
+test("a leading name line (no header) is captured as the protocol name", () => {
+  const raw = `
+Overnight Culture Prep
+1. Prepare Reagents\t1.1\tOpentrons Flex Robot
+`.trim();
+  const { name, steps, errors } = parseProtocol(raw, equipToStations());
+  assert.equal(errors.length, 0);
+  assert.equal(name, "Overnight Culture Prep");
+  assert.equal(steps[0].substeps[0].station, "A3");
+});
+
+test("a leading name line followed by a header row is captured, and the header is still skipped", () => {
+  const raw = `
+Overnight Culture Prep
+Step\tSubstep\tEquipment
+1. Prepare Reagents\t1.1\tOpentrons Flex Robot
+`.trim();
+  const { name, steps, errors } = parseProtocol(raw, equipToStations());
+  assert.equal(errors.length, 0);
+  assert.equal(name, "Overnight Culture Prep");
+  assert.equal(steps.length, 1);
+  assert.equal(steps[0].substeps.length, 1);
+});
+
+test("a paste with no name line (data starts immediately) leaves name null", () => {
+  const raw = `1. Prepare Reagents\t1.1\tOpentrons Flex Robot`.trim();
+  const { name } = parseProtocol(raw, equipToStations());
+  assert.equal(name, null);
+});
+
+test("a bare header row with no name line leaves name null instead of capturing 'Step'", () => {
+  const raw = `
+Step\tSubstep\tEquipment
+1. Prepare Reagents\t1.1\tOpentrons Flex Robot
+`.trim();
+  const { name } = parseProtocol(raw, equipToStations());
+  assert.equal(name, null);
+});
+
+test("error line numbers still point at the original pasted line when a name and header row are skipped", () => {
+  const raw = `
+Overnight Culture Prep
+Step\tSubstep\tEquipment
+1. Prepare Reagents\t1.1\tOpentrons Flex Robot
+\tnot-a-label\tNanoDrop 2000
+`.trim();
+  const { errors } = parseProtocol(raw, equipToStations());
+  assert.match(errors[0], /^Row 4:/);
+});

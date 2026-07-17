@@ -2,6 +2,22 @@ import React from "react";
 import { VIEW_W, VIEW_H, C, MONO, wrapLabel } from "../constants.js";
 import { SLOTS, FIXTURES, STATION_IDS, STATION_NAME, center, routeWaypoints, WALKWAY_PATH, isNearFixture, BENCH_LEN_FT, WALKWAY_WIDTH_FT, BACK_AISLE_FT } from "../data.js";
 
+// Packs a station's visited-step numbers into as few comma-joined rows as fit
+// within maxChars each, greedily — used to keep a busy badge's rows no wider
+// than its neighbors' bench spacing regardless of how many times a station is
+// revisited (see stepBadge below).
+function wrapStepNums(nums, maxChars) {
+  const rows = [];
+  let row = "";
+  for (const n of nums) {
+    const next = row ? `${row},${n}` : `${n}`;
+    if (next.length <= maxChars || !row) row = next;
+    else { rows.push(row); row = `${n}`; }
+  }
+  if (row) rows.push(row);
+  return rows;
+}
+
 export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highlightPath }) {
   const hov = hoverSlot ? stationEquip[hoverSlot] : null;
   const filled = STATION_IDS.filter((id) => (stationEquip[id] || []).length > 0).length;
@@ -71,19 +87,25 @@ export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highligh
         {Object.entries(stepsByStation).map(([id, nums]) => {
           const p = center(id);
           // A heavily-revisited station (common for equipment like Consumables in a
-          // long real protocol) would otherwise grow a badge wide enough to overlap
-          // its neighbors' boxes — past SAFE_MAX_W, collapse to a compact "N×" count
-          // instead of the full list, which always stays short. The full list is
-          // still one hover away via the title tooltip.
-          const full = nums.join(",");
-          const SAFE_MAX_W = 44;
-          const label = 10 + full.length * 6.5 <= SAFE_MAX_W ? full : `${nums.length}×`;
-          const w = Math.max(18, Math.min(SAFE_MAX_W, 10 + label.length * 6.5));
+          // long real protocol) would otherwise grow one wide badge that overlaps
+          // its neighbors' boxes — instead, the font shrinks a step as the count
+          // grows, and the numbers wrap onto as many rows as needed, so every badge
+          // stays about as wide as a single visit's badge while still showing every
+          // step number in full.
+          const fontSize = nums.length <= 3 ? 9 : nums.length <= 6 ? 8 : 7;
+          const charW = fontSize * 0.62;
+          const maxRowChars = Math.max(3, Math.floor(42 / charW));
+          const rows = wrapStepNums(nums, maxRowChars);
+          const rowH = fontSize + 3;
+          const w = Math.max(18, Math.min(52, 10 + Math.max(...rows.map((r) => r.length)) * charW));
+          const h = 8 + rows.length * rowH;
           return (
             <g key={"path" + id}>
-              <title>{`steps ${full}`}</title>
-              <rect x={p.x - w / 2} y={p.y - 9} width={w} height={18} rx={9} fill={C.floor} stroke={C.teal} strokeWidth={1.5} />
-              <text x={p.x} y={p.y + 3} textAnchor="middle" fontFamily={MONO} fontSize={9} fontWeight={700} fill={C.teal}>{label}</text>
+              <title>{`steps ${nums.join(",")}`}</title>
+              <rect x={p.x - w / 2} y={p.y - h / 2} width={w} height={h} rx={Math.min(9, h / 2)} fill={C.floor} stroke={C.teal} strokeWidth={1.5} />
+              {rows.map((row, i) => (
+                <text key={i} x={p.x} y={p.y - h / 2 + rowH * (i + 1) - 3} textAnchor="middle" fontFamily={MONO} fontSize={fontSize} fontWeight={700} fill={C.teal}>{row}</text>
+              ))}
             </g>
           );
         })}
