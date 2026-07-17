@@ -10,7 +10,7 @@ Gel Doc\tGel Imaging
 Thermal Cycler\tDNA Prep
 Centrifuge\tPCR
 Microscope\tResearch
-Vortex Mixer\tImaging / Research
+Vortex Mixer\tImaging
 `.trim());
 
 test("the shared test fixture table parses with no errors", () => {

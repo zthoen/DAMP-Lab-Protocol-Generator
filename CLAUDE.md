@@ -5,12 +5,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 DAMP Lab Protocol Builder — a browser-based tool that turns a pasted equipment/bench
-table into a visual lab floor map, then generates fake protocols (variable-length step
+table into a visual lab floor map, generates fake protocols (variable-length step
 sequences) engineered to force a lab technician to keep moving between benches instead
-of camping at one station. No backend, no database, no simulation — a small Vite +
-React SPA. This repo is a stripped-down fork of a larger discrete-event lab simulator;
-the simulation engine, dispatch-policy comparisons, financials, and stats/experiments
-tooling were removed because they're not needed for this tool's goal.
+of camping at one station, and can also import a *real* protocol (pasted step/substep/
+equipment data) to plot the actual route it walks. No backend, no database, no
+simulation — a small Vite + React SPA. This repo is a stripped-down fork of a larger
+discrete-event lab simulator; the simulation engine, dispatch-policy comparisons,
+financials, and stats/experiments tooling were removed because they're not needed for
+this tool's goal.
 
 ## Commands
 
@@ -19,8 +21,9 @@ tooling were removed because they're not needed for this tool's goal.
 - `npm run preview` — preview the production build.
 - `npm test` — run the pure-function test suite (Node's built-in `node --test`, zero
   dependencies; see `test/`). Covers table parsing (`labTable.js`), the routing/
-  distance model (`data.js`), and protocol generation (`protocolGen.js`), including
-  seeded reproducibility. `npm test -- test/protocolGen.test.js` runs a single file.
+  distance model (`data.js`), fake-protocol generation (`protocolGen.js`), and real-
+  protocol import (`protocolImport.js`), including seeded reproducibility.
+  `npm test -- test/protocolGen.test.js` runs a single file.
 
 The repo is ESM (`"type": "module"`). There is no linter or type checker configured.
 
@@ -175,7 +178,41 @@ actually visited by some step; if any weren't, one extra "coverage" protocol is
 appended that walks to each missed fixture in turn. This coverage protocol isn't held
 to the bookend rule (it's a single-purpose fixture-visit, not a simulated protocol).
 
-**UI (`src/`)** — two tabs driven by `App.jsx`, sharing one parsed `labData`
+**Protocol import (`src/protocolImport.js`)** — `parseProtocol(raw, equipToStations)`
+is the counterpart to `protocolGen.js` for a *real* protocol pasted from a
+spreadsheet, rather than a generated fake one. Columns are `[Step, Substep,
+Equipment]` (extra trailing columns are ignored): a Step cell reads `"N. Name"`
+and — because it comes from a merged spreadsheet cell — only appears on that
+step's first row, every later substep row leaving it blank; a Substep cell is
+strictly `"N.M"` (e.g. `"1.2"`), which is what tells the two apart and is also
+the grouping key (the Step cell is only ever used for its name text, never
+cross-checked against the substep's own step number). Because a blank leading
+cell is meaningful here, lines are only trimmed for the blank-line check, never
+for content — trimming a whole line would strip the leading tab that marks a
+continued step and shift every column over.
+
+Each substep's Equipment cell is matched case-insensitively against
+`equipToStations` (the same map `parseLabTable` builds, loaded from whatever's
+on the Lab Builder tab) to find its station. Equipment not found on the loaded
+map still gets a substep entry (so the formatted view shows it, with `station:
+null`) and is reported in `errors`, but never contributes to a path. When
+equipment lives at more than one station, `nearestStation` picks whichever is
+*closest* to the previous substep's station — the opposite of `protocolGen.js`'s
+`farthestStation`, deliberately: that function is forcing artificial movement
+across an invented protocol, this one is plotting the realistic route of a real
+one, where a technician would use the nearest instance of a thing, not detour to
+the far one. That "previous station" tracking runs across the *whole* protocol,
+not reset per step, so the plotted route is one continuous walk even across step
+boundaries.
+
+Returns `steps` (ascending by number, each with its own `substeps`, `path` — the
+station-only, null-filtered list for that step's own route — `stationsVisited`,
+and `travelFt`), plus whole-protocol `fullPath`/`fullStationsVisited`/
+`fullTravelFt` computed over the single concatenated path (so the whole-protocol
+total also counts the walk from one step's last station to the next step's
+first, not just the sum of each step's own smaller total), and `errors`.
+
+**UI (`src/`)** — three tabs driven by `App.jsx`, sharing one parsed `labData`
 (`parseLabTable` over the raw pasted text, memoized in `App.jsx`):
 - `App.jsx`: also owns the raw pasted text's persistence — it's read from
   `localStorage` (`damp-lab-raw-table` key) on boot via `loadStoredTable`, so the
@@ -201,6 +238,13 @@ to the bookend rule (it's a single-purpose fixture-visit, not a simulated protoc
   by non-consecutive steps gets one merged "1,3"-style badge instead of a second
   marker silently overlapping the first. Has no simulation state; it only knows
   what's in the parsed table.
+- `ProtocolImportTab.jsx`: the paste textarea for a real protocol, an error list,
+  and a column of cards beside a `LabMap.jsx` — a "Full Protocol" summary card
+  (selected by default) plus one card per step, each with its own substep table
+  (station/equipment/Read-or-Write, mirroring `ProtocolGeneratorTab`'s card
+  layout); an unresolved substep shows `?` for its station in red instead of a
+  code. Selecting a step highlights just that step's own `path`; the Full
+  Protocol card highlights `fullPath`, the whole route start to finish.
 - `Controls.jsx`: shared widgets (`NumField`, `Dropdown`, `StatCard`, `InfoDot`,
   `Slider`, `Toggle`, `Section`, `Panel`) carried over from the original sim UI.
 

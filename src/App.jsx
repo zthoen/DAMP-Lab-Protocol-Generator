@@ -3,10 +3,12 @@ import { C, MONO } from "./constants.js";
 import { parseLabTable } from "./labTable.js";
 import LabBuilderTab from "./components/LabBuilderTab.jsx";
 import ProtocolGeneratorTab from "./components/ProtocolGeneratorTab.jsx";
+import ProtocolImportTab from "./components/ProtocolImportTab.jsx";
 
 const TAB_BLURB = {
   builder: "Paste an equipment-to-bench table from your spreadsheet and see it laid out on the lab floor.",
   protocols: "Generate fake protocols with a variable number of steps, drawn so each one forces the technician onto a different bench than the last.",
+  import: "Paste a real protocol and see its actual route on the lab floor, step by step or start to finish.",
 };
 
 // The last pasted equipment list is remembered across reloads — booting the
@@ -51,11 +53,12 @@ export default function LabWorkflowApp() {
         <div style={{ fontSize: 11, color: C.muted, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 20, padding: "2px 10px", fontFamily: MONO }}>lab map + fake protocol generator</div>
       </div>
       <div style={{ display: "flex", gap: 20, borderBottom: `1px solid ${C.border}`, marginBottom: 10 }}>
-        {tabBtn("builder", "Lab Builder")}{tabBtn("protocols", "Protocol Generator")}
+        {tabBtn("builder", "Lab Builder")}{tabBtn("protocols", "Protocol Generator")}{tabBtn("import", "Import Protocol")}
       </div>
       <div style={{ fontSize: 12, color: C.muted, marginBottom: 14, maxWidth: 720 }}>{TAB_BLURB[tab]}</div>
       {tab === "builder" && <LabBuilderTab rawTable={rawTable} setRawTable={setRawTable} labData={labData} />}
       {tab === "protocols" && <ProtocolGeneratorTab labData={labData} />}
+      {tab === "import" && <ProtocolImportTab labData={labData} />}
     </div>
   );
 }

@@ -6,7 +6,7 @@ import LabMap from "./LabMap.jsx";
 const PLACEHOLDER = `Equipment\tStation Name
 Opentrons Flex Robot\tAutomation Prep 1
 Biorad Gel Doc XR+ Imaging System\tGel Imaging
-New Brunswick Innova Incubator Shaker\tMicrobial Culture, Microbial Incubators
+New Brunswick Innova Incubator Shaker\tMicrobial Culture Processing, Microbial Incubators
 Applied Biosystems 2720 Thermal Cycler\tPCR`;
 
 export default function LabBuilderTab({ rawTable, setRawTable, labData }) {
@@ -20,7 +20,7 @@ export default function LabBuilderTab({ rawTable, setRawTable, labData }) {
           Paste a table from your spreadsheet: <b>Equipment</b> and <b>Station Name</b>. Station names must
           match one of the lab's fixed stations exactly (hover a bench on the map to see its name). If one
           piece of equipment lives at several stations, list them on one row separated by commas (
-          <code>Microbial Culture, Microbial Incubators</code>) or give it its own row per station. This list
+          <code>Microbial Culture Processing, Microbial Incubators</code>) or give it its own row per station. This list
           is saved automatically and reloaded next time you open the app &mdash; paste a new one anytime to
           replace it.
         </div>
