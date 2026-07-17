@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-DAMP Lab Protocol Builder — a browser-based tool that turns a pasted equipment/bench
+DAMP Lab Choreography Visualizer — a browser-based tool that turns a pasted equipment/bench
 table into a visual lab floor map, generates fake protocols (variable-length step
 sequences) engineered to force a lab technician to keep moving between benches instead
 of camping at one station, and can also import a *real* protocol (pasted step/substep/
@@ -193,7 +193,7 @@ continued step and shift every column over.
 
 Each substep's Equipment cell is matched case-insensitively against
 `equipToStations` (the same map `parseLabTable` builds, loaded from whatever's
-on the Lab Builder tab) to find its station. Equipment not found on the loaded
+on the Equipment Input tab) to find its station. Equipment not found on the loaded
 map still gets a substep entry (so the formatted view shows it, with `station:
 null`) and is reported in `errors`, but never contributes to a path. When
 equipment lives at more than one station, `nearestStation` picks whichever is
@@ -220,9 +220,9 @@ first, not just the sum of each step's own smaller total), and `errors`.
   every change, so pasting a new table over it overwrites what's stored. Storage
   errors (private browsing, disabled storage) are swallowed — the app just falls
   back to a blank table rather than crashing.
-- `LabBuilderTab.jsx`: the paste textarea, row-error list, and the `LabMap.jsx` render
-  of the resulting station/equipment layout.
-- `ProtocolGeneratorTab.jsx`: controls for protocol count / min-max steps / seed, a
+- `LabBuilderTab.jsx` (tab label "Equipment Input"): the paste textarea, row-error
+  list, and the `LabMap.jsx` render of the resulting station/equipment layout.
+- `ProtocolGeneratorTab.jsx` (tab label "Protocol Generator"): controls for protocol count / min-max steps / seed, a
   "Generate" button, and a column of cards per generated protocol (station/equipment/
   Read-or-Write type per step) beside a larger `LabMap.jsx` — the map is the point of
   the page, so it gets the majority of the width. Selecting a protocol highlights its
@@ -236,9 +236,13 @@ first, not just the sum of each step's own smaller total), and `errors`.
   touching the front of every bench it uses and the middle of every walkway it
   transits) — never a dashed line or one cutting through a bench. A station revisited
   by non-consecutive steps gets one merged "1,3"-style badge instead of a second
-  marker silently overlapping the first. Has no simulation state; it only knows
-  what's in the parsed table.
-- `ProtocolImportTab.jsx`: the paste textarea for a real protocol, an error list,
+  marker silently overlapping the first; past `SAFE_MAX_W` (44px — safely under the
+  ~70px bench spacing) a badge with many revisits collapses to a compact "N×" count
+  instead of listing every step number, so a heavily-revisited station (e.g.
+  Consumables in a long real protocol) can't grow wide enough to overlap its
+  neighbors — the full list is still available via the badge's hover tooltip. Has no
+  simulation state; it only knows what's in the parsed table.
+- `ProtocolImportTab.jsx` (tab label "Protocol Visualizer"): the paste textarea for a real protocol, an error list,
   and a column of cards beside a `LabMap.jsx` — a "Full Protocol" summary card
   (selected by default) plus one card per step, each with its own substep table
   (station/equipment/Read-or-Write, mirroring `ProtocolGeneratorTab`'s card

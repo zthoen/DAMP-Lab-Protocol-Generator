@@ -70,10 +70,18 @@ export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highligh
         )}
         {Object.entries(stepsByStation).map(([id, nums]) => {
           const p = center(id);
-          const label = nums.join(",");
-          const w = Math.max(18, 10 + label.length * 6.5);
+          // A heavily-revisited station (common for equipment like Consumables in a
+          // long real protocol) would otherwise grow a badge wide enough to overlap
+          // its neighbors' boxes — past SAFE_MAX_W, collapse to a compact "N×" count
+          // instead of the full list, which always stays short. The full list is
+          // still one hover away via the title tooltip.
+          const full = nums.join(",");
+          const SAFE_MAX_W = 44;
+          const label = 10 + full.length * 6.5 <= SAFE_MAX_W ? full : `${nums.length}×`;
+          const w = Math.max(18, Math.min(SAFE_MAX_W, 10 + label.length * 6.5));
           return (
             <g key={"path" + id}>
+              <title>{`steps ${full}`}</title>
               <rect x={p.x - w / 2} y={p.y - 9} width={w} height={18} rx={9} fill={C.floor} stroke={C.teal} strokeWidth={1.5} />
               <text x={p.x} y={p.y + 3} textAnchor="middle" fontFamily={MONO} fontSize={9} fontWeight={700} fill={C.teal}>{label}</text>
             </g>

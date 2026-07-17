@@ -49,11 +49,11 @@ export default function LabWorkflowApp() {
         borderRadius: 10, border: `1px solid ${C.border}`,
         background: `linear-gradient(90deg, ${C.panel} 0%, ${C.panel2} 60%, ${C.panel} 100%)`,
       }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>DAMP Lab <span style={{ color: C.teal }}>Protocol Builder</span></div>
+        <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>DAMP Lab <span style={{ color: C.teal }}>Choreography Visualizer</span></div>
         <div style={{ fontSize: 11, color: C.muted, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 20, padding: "2px 10px", fontFamily: MONO }}>lab map + fake protocol generator</div>
       </div>
       <div style={{ display: "flex", gap: 20, borderBottom: `1px solid ${C.border}`, marginBottom: 10 }}>
-        {tabBtn("builder", "Lab Builder")}{tabBtn("protocols", "Protocol Generator")}{tabBtn("import", "Import Protocol")}
+        {tabBtn("builder", "Equipment Input")}{tabBtn("protocols", "Protocol Generator")}{tabBtn("import", "Protocol Visualizer")}
       </div>
       <div style={{ fontSize: 12, color: C.muted, marginBottom: 14, maxWidth: 720 }}>{TAB_BLURB[tab]}</div>
       {tab === "builder" && <LabBuilderTab rawTable={rawTable} setRawTable={setRawTable} labData={labData} />}
