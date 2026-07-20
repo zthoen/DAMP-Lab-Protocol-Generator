@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { parseProtocol } from "../src/protocolImport.js";
 import { parseLabTable } from "../src/labTable.js";
-import { BENCH_DIST_FT, PIPETTE_STATIONS } from "../src/data.js";
+import { BENCH_DIST_FT, PIPETTE_STATIONS, DIST_TABLES_BY_ANCHOR } from "../src/data.js";
 
 const equipToStations = () => parseLabTable(`
 Opentrons Flex Robot\tHamilton
@@ -181,4 +181,50 @@ test("a 'Pipette' step resolves to whichever pool station is nearest the previou
   const { steps } = parseProtocol(raw, equipToStations());
   const fromA3 = PIPETTE_STATIONS.reduce((best, s) => (BENCH_DIST_FT.A3[s] < BENCH_DIST_FT.A3[best] ? s : best), PIPETTE_STATIONS[0]);
   assert.equal(steps[0].substeps[1].station, fromA3);
+});
+
+// --- Lab Optimizer support: distTable/pipetteStations overrides ---
+
+test("an explicit distTable changes travelFt without touching which station is nearest under the default one", () => {
+  const raw = `
+1. Loop\t1.1\tOpentrons Flex Robot
+\t1.2\tThermal Cycler
+`.trim();
+  const withDefault = parseProtocol(raw, equipToStations());
+  const withAlt = parseProtocol(raw, equipToStations(), DIST_TABLES_BY_ANCHOR.DE);
+  // Neither Hamilton (A3) nor PCR (D3) is a trio member, so an alternate trio
+  // anchor shouldn't change the route between them at all.
+  assert.equal(withAlt.fullTravelFt, withDefault.fullTravelFt);
+  assert.deepEqual(withAlt.fullPath, withDefault.fullPath);
+});
+
+test("an explicit distTable changes a trio-involving route to match the given anchor", () => {
+  const withSharps = parseLabTable(`
+Opentrons Flex Robot\tHamilton
+Used Pipette Tips\tSharps Bin
+`.trim()).equipToStations;
+  const raw = "1. Dispose\t1.1\tOpentrons Flex Robot\n\t1.2\tUsed Pipette Tips";
+  const withDefault = parseProtocol(raw, withSharps);
+  const withDE = parseProtocol(raw, withSharps, DIST_TABLES_BY_ANCHOR.DE);
+  assert.equal(withDefault.fullTravelFt, Math.round(BENCH_DIST_FT.A3.SHARPS));
+  assert.equal(withDE.fullTravelFt, Math.round(DIST_TABLES_BY_ANCHOR.DE.A3.SHARPS));
+  assert.notEqual(withDE.fullTravelFt, withDefault.fullTravelFt);
+});
+
+test("an explicit pipetteStations pool overrides where a 'Pipette' step can resolve to", () => {
+  const raw = `1. Aliquot\t1.1\tPipette`.trim();
+  const customPool = ["A1", "H3"];
+  const { steps } = parseProtocol(raw, {}, BENCH_DIST_FT, customPool);
+  assert.ok(customPool.includes(steps[0].substeps[0].station));
+  assert.ok(!PIPETTE_STATIONS.includes(steps[0].substeps[0].station) || customPool.includes(steps[0].substeps[0].station));
+});
+
+test("parseProtocol's default distTable/pipetteStations still match calling it with no extra args", () => {
+  const raw = `
+1. Prep\t1.1\tOpentrons Flex Robot
+\t1.2\tPipette
+`.trim();
+  const explicit = parseProtocol(raw, equipToStations(), BENCH_DIST_FT, PIPETTE_STATIONS);
+  const implicit = parseProtocol(raw, equipToStations());
+  assert.deepEqual(explicit, implicit);
 });

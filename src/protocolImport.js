@@ -23,14 +23,14 @@ const SUBSTEP_RE = /^(\d+)\.(\d+)$/;
 // farthest station on purpose to force movement across an invented protocol;
 // here we're plotting the route of a real one, so the realistic choice is
 // "closest to where you already are").
-function nearestStation(stations, from) {
+function nearestStation(stations, from, distTable) {
   if (!from) return stations[0];
-  return stations.reduce((best, s) => (BENCH_DIST_FT[from][s] < BENCH_DIST_FT[from][best] ? s : best), stations[0]);
+  return stations.reduce((best, s) => (distTable[from][s] < distTable[from][best] ? s : best), stations[0]);
 }
 
-function travelFtOf(stations) {
+function travelFtOf(stations, distTable) {
   let ft = 0;
-  for (let i = 1; i < stations.length; i++) ft += BENCH_DIST_FT[stations[i - 1]][stations[i]];
+  for (let i = 1; i < stations.length; i++) ft += distTable[stations[i - 1]][stations[i]];
   return Math.round(ft);
 }
 
@@ -61,8 +61,14 @@ const HEADER_WORD = /^step$/i;
    `steps` (one entry per step number, in ascending order, each with its own
    `substeps`, `path` — the ordered, station-only list for that step's own
    route — `stationsVisited`, and `travelFt`), `fullPath` (every step's path
-   concatenated, for the whole-protocol route), and `errors`. */
-export function parseProtocol(raw, equipToStations = {}) {
+   concatenated, for the whole-protocol route), and `errors`.
+
+   `distTable` and `pipetteStations` default to the real, current floor
+   (BENCH_DIST_FT, PIPETTE_STATIONS) — the Lab Optimizer is the only caller
+   that ever passes different ones, to score a candidate station layout
+   (including where its 8 pipette-eligible benches ended up) without needing
+   its own copy of this same nearest-station walking logic. */
+export function parseProtocol(raw, equipToStations = {}, distTable = BENCH_DIST_FT, pipetteStations = PIPETTE_STATIONS) {
   // Unlike labTable.js's rows, a blank leading cell here is meaningful (it's how
   // a continued step's Step column is marked) — trimming a whole line would
   // strip that leading tab and shift every column over, so only fully-blank
@@ -101,14 +107,14 @@ export function parseProtocol(raw, equipToStations = {}) {
 
     let station;
     if (PIPETTE_LABEL.test(equipment)) {
-      station = nearestStation(PIPETTE_STATIONS, lastStation);
+      station = nearestStation(pipetteStations, lastStation, distTable);
     } else {
       const canonical = equipLookup[equipment.toLowerCase()];
       const stations = canonical ? equipToStations[canonical] : null;
       if (!stations || stations.length === 0) {
         errors.push(`Row ${lineNo}: "${equipment}" isn't in the loaded equipment list`);
       }
-      station = stations && stations.length ? nearestStation(stations, lastStation) : null;
+      station = stations && stations.length ? nearestStation(stations, lastStation, distTable) : null;
     }
     if (station) lastStation = station;
 
@@ -124,7 +130,7 @@ export function parseProtocol(raw, equipToStations = {}) {
 
   const steps = [...stepsByNumber.values()].sort((a, b) => a.number - b.number).map((s) => {
     const path = s.substeps.map((sub) => sub.station).filter(Boolean);
-    return { ...s, path, stationsVisited: new Set(path).size, travelFt: travelFtOf(path) };
+    return { ...s, path, stationsVisited: new Set(path).size, travelFt: travelFtOf(path, distTable) };
   });
 
   // The whole protocol's travel distance is computed over the single
@@ -132,6 +138,6 @@ export function parseProtocol(raw, equipToStations = {}) {
   // the walk from one step's last station to the next step's first one.
   const fullPath = steps.flatMap((s) => s.path);
   const fullStationsVisited = new Set(fullPath).size;
-  const fullTravelFt = travelFtOf(fullPath);
+  const fullTravelFt = travelFtOf(fullPath, distTable);
   return { name, steps, fullPath, fullStationsVisited, fullTravelFt, errors };
 }

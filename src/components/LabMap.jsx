@@ -25,7 +25,7 @@ function wrapStepNums(nums, maxChars) {
   return rows;
 }
 
-export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highlightPath }) {
+export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highlightPath, stationNames = STATION_NAME, fixtures = FIXTURES }) {
   const hov = hoverSlot ? stationEquip[hoverSlot] : null;
   const filled = STATION_IDS.filter((id) => (stationEquip[id] || []).length > 0).length;
 
@@ -45,7 +45,7 @@ export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highligh
     const equip = stationEquip[id] || [];
     const isHov = hoverSlot === id;
     const fill = equip.length === 0 ? C.slot : "#1d3a3a";
-    const lines = wrapLabel(STATION_NAME[id], 12);
+    const lines = wrapLabel(stationNames[id], 12);
     return (
       <g key={id} onMouseEnter={() => setHoverSlot(id)}>
         <rect x={r.x} y={r.y} width={r.w} height={r.h} fill={fill} stroke={isHov ? C.teal : C.slotLine} strokeWidth={isHov ? 2 : 1.2} />
@@ -86,7 +86,7 @@ export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highligh
         <path d={WALKWAY_PATH} fill="#ffffff0d" stroke={C.slotLine} strokeDasharray="3 5" opacity={0.7} />
 
         {Object.entries(SLOTS).map(([id, r]) => benchBox(id, r))}
-        {Object.entries(FIXTURES).map(([id, r]) => fixtureBox(id, r))}
+        {Object.entries(fixtures).map(([id, r]) => fixtureBox(id, r))}
 
         <g>
           <line x1={SCALE_X} y1={SCALE_Y} x2={SCALE_X + SCALE_LEN} y2={SCALE_Y} stroke={C.muted} strokeWidth={1.5} />
@@ -127,7 +127,7 @@ export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highligh
       {hov && (
         <div style={{ position: "absolute", top: 14, right: 14, width: 240, background: "#0a1017f2", border: `1px solid ${C.teal}`, borderRadius: 9, padding: "10px 12px", pointerEvents: "none", backdropFilter: "blur(3px)", boxShadow: "0 8px 24px #0008" }}>
           <div style={{ fontFamily: MONO, fontWeight: 700, color: C.teal, fontSize: 13 }}>{hoverSlot}</div>
-          <div style={{ color: C.muted, fontSize: 11.5, marginBottom: 6 }}>{hoverSlot ? STATION_NAME[hoverSlot] : ""}</div>
+          <div style={{ color: C.muted, fontSize: 11.5, marginBottom: 6 }}>{hoverSlot ? stationNames[hoverSlot] : ""}</div>
           {hov.length > 0
             ? <ul style={{ margin: 0, paddingLeft: 16, fontSize: 11 }}>{hov.map((e) => <li key={e} style={{ color: C.text }}>{e}</li>)}</ul>
             : <div style={{ fontSize: 11, color: C.muted }}>no equipment mapped here</div>}

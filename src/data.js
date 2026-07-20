@@ -62,13 +62,35 @@ const glasswareBox = box(2.25, 4), consum1Box = box(2.25, 4), consum2Box = box(2
 const refrigeratorBox = box(2.5, 5);
 
 // The trio's top edge touches row 3's bottom edge directly (no gap), chained
-// left to right and centered on the B-C walkway boundary they straddle.
+// left to right and centered on whichever touching pair's boundary it straddles.
 const TRIO_TOP_Y = ROW_Y[3] + SLOT_H;
 const trioWidth = sharpsBox.w + FIXTURE_GAP + recycleBox.w + FIXTURE_GAP + wasteBox.w;
-const midBC = (COL_X.B + SLOT_W / 2 + COL_X.C + SLOT_W / 2) / 2;
-const sharpsX = midBC - trioWidth / 2;
-const recycleX = sharpsX + sharpsBox.w + FIXTURE_GAP;
-const wasteX = recycleX + recycleBox.w + FIXTURE_GAP;
+
+// The 3 touching column-pairs (see the comment above WALKWAY_GROUPS — B-C, D-E,
+// F-G touch directly, unlike the walkway pairs) the sharps/recycling/biohazard
+// trio can anchor to as a group; A and H each touch only one neighbor via a
+// walkway, not a touching pair, so they're never eligible. The Lab Optimizer is
+// the only thing that ever picks anything but "BC" (today's fixed layout).
+export const TOUCHING_PAIRS = { BC: ["B", "C"], DE: ["D", "E"], FG: ["F", "G"] };
+export const DEFAULT_TRIO_ANCHOR = "BC";
+
+// Pixel boxes for the trio anchored at a given touching pair, keeping its fixed
+// left-to-right internal order (sharps, recycling, biohazard) and vertical
+// placement (touching row 3) regardless of which pair it's centered on.
+function trioBoxesFor([leftCol, rightCol]) {
+  const midX = (COL_X[leftCol] + SLOT_W / 2 + COL_X[rightCol] + SLOT_W / 2) / 2;
+  const sharpsX = midX - trioWidth / 2;
+  const recycleX = sharpsX + sharpsBox.w + FIXTURE_GAP;
+  const wasteX = recycleX + recycleBox.w + FIXTURE_GAP;
+  return {
+    SHARPS: { name: "Sharps Bin", x: sharpsX, y: TRIO_TOP_Y, w: sharpsBox.w, h: sharpsBox.h },
+    RECYCLE: { name: "Recycling Bin", x: recycleX, y: TRIO_TOP_Y, w: recycleBox.w, h: recycleBox.h },
+    WASTE: { name: "Biohazard Waste", x: wasteX, y: TRIO_TOP_Y, w: wasteBox.w, h: wasteBox.h },
+  };
+}
+// Exposed so the Lab Optimizer's map view can render the trio relocated to
+// whichever anchor it recommends, without disturbing the default layout below.
+export const trioFixturesForAnchor = (anchorKey) => trioBoxesFor(TOUCHING_PAIRS[anchorKey]);
 
 // The back walkway starts right where the trio ends (so the trio sits flush
 // between row 3 above and the walkway below) and runs the full width of the
@@ -96,9 +118,7 @@ const consum2X = consum1X + consum1Box.w + FIXTURE_GAP;
 const refrigeratorX = COL_X.H + SLOT_W + 5 * FIXTURE_PX_PER_FT;
 
 export const FIXTURES = {
-  SHARPS: { name: "Sharps Bin", x: sharpsX, y: TRIO_TOP_Y, w: sharpsBox.w, h: sharpsBox.h },
-  RECYCLE: { name: "Recycling Bin", x: recycleX, y: TRIO_TOP_Y, w: recycleBox.w, h: recycleBox.h },
-  WASTE: { name: "Biohazard Waste", x: wasteX, y: TRIO_TOP_Y, w: wasteBox.w, h: wasteBox.h },
+  ...trioBoxesFor(TOUCHING_PAIRS[DEFAULT_TRIO_ANCHOR]),
   SINK: { name: "Sink", x: sinkX, y: FAR_TOP_Y, w: sinkBox.w, h: sinkBox.h },
   GLASSWARE: { name: "Glassware", x: glasswareX, y: FAR_TOP_Y, w: glasswareBox.w, h: glasswareBox.h },
   CONSUM1: { name: "Consumables 1", x: consum1X, y: FAR_TOP_Y, w: consum1Box.w, h: consum1Box.h },
@@ -119,7 +139,14 @@ export const FIXTURES = {
 // distance model — they tell the same qualitative story as the pixel layout
 // above (sink, glassware, Consumables 1, Consumables 2 in that order, with the
 // refrigerator far off past column H) without needing to be derived from it.
-const NEAR_FIXTURES = { SHARPS: ["B"], WASTE: ["C"], RECYCLE: ["B", "C"] };
+// SHARPS aliases to the anchor's left column, WASTE to the right, RECYCLE to
+// either — the trio's fixed left-to-right order, wherever it's anchored.
+function nearFixturesFor([leftCol, rightCol]) {
+  return { SHARPS: [leftCol], WASTE: [rightCol], RECYCLE: [leftCol, rightCol] };
+}
+// Exposed for the Lab Optimizer to build a distance table for a candidate anchor.
+export const nearFixturesForAnchor = (anchorKey) => nearFixturesFor(TOUCHING_PAIRS[anchorKey]);
+const NEAR_FIXTURES = nearFixturesFor(TOUCHING_PAIRS[DEFAULT_TRIO_ANCHOR]);
 const FAR_FEETX = {
   SINK: 0,
   GLASSWARE: 4,
@@ -213,8 +240,10 @@ for (const [id, name] of Object.entries(STATION_NAME)) NAME_TO_STATION_ID[name.t
 // bench with pipettes and bench space works. `protocolImport.js` resolves a
 // step whose Equipment cell literally reads "Pipette" to whichever of these
 // is nearest, instead of requiring it in the pasted equipment list like
-// everything else has to be.
-const PIPETTE_STATION_NAMES = [
+// everything else has to be. Exported by name (not just resolved id) so the
+// Lab Optimizer can re-resolve the pool under a candidate bench-name layout —
+// the ids below are only valid for the real, current layout.
+export const PIPETTE_STATION_NAMES = [
   "Dry Chemical Prep", "Automation Prep 2", "NanoDrop", "Gel Imaging",
   "Research", "Transfyr", "DNA/RNA Prep", "Microbial Culture Prep",
 ];
@@ -256,24 +285,44 @@ function benchToFarFt(benchId, farId) {
    crossing beyond what reaching that bench already costs. The sink/consumables
    pair sits genuinely beyond the back walkway, so reaching one always costs one
    crossing plus the lateral walk to line up with it; two far fixtures are both
-   already past that walkway, so moving between them is pure lateral distance. */
-export function routeDistanceFt(aId, bId) {
+   already past that walkway, so moving between them is pure lateral distance.
+
+   `nearFixtures` defaults to the trio's real, current anchor (NEAR_FIXTURES) —
+   the Lab Optimizer is the only caller that ever passes a different one, to
+   evaluate a candidate anchor without disturbing this default. */
+export function routeDistanceFt(aId, bId, nearFixtures = NEAR_FIXTURES) {
   if (aId === bId) return 0;
-  if (isNearFixture(aId)) return Math.min(...NEAR_FIXTURES[aId].map((c) => routeDistanceFt(`${c}3`, bId)));
-  if (isNearFixture(bId)) return Math.min(...NEAR_FIXTURES[bId].map((c) => routeDistanceFt(aId, `${c}3`)));
+  if (isNearFixture(aId)) return Math.min(...nearFixtures[aId].map((c) => routeDistanceFt(`${c}3`, bId, nearFixtures)));
+  if (isNearFixture(bId)) return Math.min(...nearFixtures[bId].map((c) => routeDistanceFt(aId, `${c}3`, nearFixtures)));
   if (isFarFixture(aId) && isFarFixture(bId)) return Math.abs(FAR_FEETX[aId] - FAR_FEETX[bId]);
   if (isFarFixture(aId)) return benchToFarFt(bId, aId);
   if (isFarFixture(bId)) return benchToFarFt(aId, bId);
   return benchToBenchFt(aId, bId);
 }
 
+// A full station x station distance table for an arbitrary near-fixture anchor —
+// what BENCH_DIST_FT below is for the real, current anchor. Exposed so the Lab
+// Optimizer can score a candidate trio placement (BC/DE/FG) without recomputing
+// routeDistanceFt per pair on every search iteration.
+export function buildDistTable(nearFixtures) {
+  const table = {};
+  for (const a of STATION_IDS) {
+    table[a] = {};
+    for (const b of STATION_IDS) table[a][b] = routeDistanceFt(a, b, nearFixtures);
+  }
+  return table;
+}
+
 // Precomputed so the protocol generator can pick a "force movement" step without
 // recomputing the route per draw.
-export const BENCH_DIST_FT = {};
-for (const a of STATION_IDS) {
-  BENCH_DIST_FT[a] = {};
-  for (const b of STATION_IDS) BENCH_DIST_FT[a][b] = routeDistanceFt(a, b);
-}
+export const BENCH_DIST_FT = buildDistTable(NEAR_FIXTURES);
+
+// One precomputed distance table per possible trio anchor — only 3, so building
+// all of them up front is cheap and lets the Lab Optimizer just look one up
+// instead of rebuilding a table per candidate it evaluates.
+export const DIST_TABLES_BY_ANCHOR = Object.fromEntries(
+  Object.keys(TOUCHING_PAIRS).map((key) => [key, key === DEFAULT_TRIO_ANCHOR ? BENCH_DIST_FT : buildDistTable(nearFixturesForAnchor(key))]),
+);
 
 // The point on the back-walkway travel line aligned with a station's x — for a
 // bench that's its own walkway's centerline; for a fixture it's directly in

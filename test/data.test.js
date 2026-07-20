@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { routeDistanceFt, routeWaypoints, BENCH_DIST_FT, STATION_IDS, STATION_NAME, NAME_TO_STATION_ID, center, WALKWAY_WIDTH_FT, BACK_AISLE_FT, BENCH_LEN_FT, BENCH_WIDTH_FT } from "../src/data.js";
+import {
+  routeDistanceFt, routeWaypoints, BENCH_DIST_FT, STATION_IDS, STATION_NAME, NAME_TO_STATION_ID, center, FIXTURES,
+  WALKWAY_WIDTH_FT, BACK_AISLE_FT, BENCH_LEN_FT, BENCH_WIDTH_FT,
+  TOUCHING_PAIRS, DEFAULT_TRIO_ANCHOR, nearFixturesForAnchor, trioFixturesForAnchor, buildDistTable, DIST_TABLES_BY_ANCHOR,
+} from "../src/data.js";
 
 test("same station is zero distance", () => {
   assert.equal(routeDistanceFt("A1", "A1"), 0);
@@ -122,4 +126,53 @@ test("routeWaypoints for a fixture ends at its own center and starts at a real p
     assert.equal(typeof pts[0].x, "number");
     assert.equal(typeof pts[0].y, "number");
   }
+});
+
+// --- Lab Optimizer support: alternate trio anchors ---
+
+test("the 3 touching pairs are exactly B-C, D-E, F-G, and the default anchor is B-C", () => {
+  assert.deepEqual(TOUCHING_PAIRS, { BC: ["B", "C"], DE: ["D", "E"], FG: ["F", "G"] });
+  assert.equal(DEFAULT_TRIO_ANCHOR, "BC");
+});
+
+test("nearFixturesForAnchor keeps sharps-left/waste-right/recycle-both for every anchor", () => {
+  assert.deepEqual(nearFixturesForAnchor("BC"), { SHARPS: ["B"], WASTE: ["C"], RECYCLE: ["B", "C"] });
+  assert.deepEqual(nearFixturesForAnchor("DE"), { SHARPS: ["D"], WASTE: ["E"], RECYCLE: ["D", "E"] });
+  assert.deepEqual(nearFixturesForAnchor("FG"), { SHARPS: ["F"], WASTE: ["G"], RECYCLE: ["F", "G"] });
+});
+
+test("routeDistanceFt aliases a custom anchor's trio to that anchor's own row-3 benches", () => {
+  const de = nearFixturesForAnchor("DE");
+  assert.equal(routeDistanceFt("D3", "SHARPS", de), 0);
+  assert.equal(routeDistanceFt("E3", "WASTE", de), 0);
+  // Same-anchor cross-member trip is exactly a D3<->E3 trip, mirroring the
+  // default anchor's SHARPS<->WASTE = B3<->C3 relationship.
+  assert.equal(routeDistanceFt("SHARPS", "WASTE", de), routeDistanceFt("D3", "E3"));
+  // The real (BC) anchor is unaffected by passing a different one elsewhere.
+  assert.equal(routeDistanceFt("B3", "SHARPS"), 0);
+});
+
+test("trioFixturesForAnchor keeps the trio's left-to-right order (sharps, recycling, biohazard) at every anchor", () => {
+  for (const key of Object.keys(TOUCHING_PAIRS)) {
+    const boxes = trioFixturesForAnchor(key);
+    assert.ok(boxes.SHARPS.x < boxes.RECYCLE.x, `${key}: sharps should be left of recycling`);
+    assert.ok(boxes.RECYCLE.x < boxes.WASTE.x, `${key}: recycling should be left of biohazard`);
+  }
+  // The default anchor's box matches the real, hardcoded FIXTURES positions.
+  assert.deepEqual(trioFixturesForAnchor(DEFAULT_TRIO_ANCHOR).SHARPS, FIXTURES.SHARPS);
+  assert.deepEqual(trioFixturesForAnchor(DEFAULT_TRIO_ANCHOR).WASTE, FIXTURES.WASTE);
+});
+
+test("buildDistTable for the default anchor matches BENCH_DIST_FT exactly", () => {
+  const table = buildDistTable(nearFixturesForAnchor(DEFAULT_TRIO_ANCHOR));
+  assert.deepEqual(table, BENCH_DIST_FT);
+});
+
+test("DIST_TABLES_BY_ANCHOR has one table per anchor, BC identical to BENCH_DIST_FT", () => {
+  assert.deepEqual(Object.keys(DIST_TABLES_BY_ANCHOR).sort(), ["BC", "DE", "FG"]);
+  assert.equal(DIST_TABLES_BY_ANCHOR.BC, BENCH_DIST_FT);
+  // A DE-anchored table disagrees with the real one specifically on trio distances.
+  assert.notEqual(DIST_TABLES_BY_ANCHOR.DE.SHARPS.A1, BENCH_DIST_FT.SHARPS.A1);
+  // ...but agrees everywhere that has nothing to do with the trio.
+  assert.equal(DIST_TABLES_BY_ANCHOR.DE.A1.H3, BENCH_DIST_FT.A1.H3);
 });
