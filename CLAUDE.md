@@ -147,20 +147,15 @@ name is shown.
 
 **Protocol generation (`src/protocolGen.js`)** — `generateProtocols(equipToStations,
 opts)` builds `count` fake protocols, each a random-length (`minSteps`–`maxSteps`)
-sequence of steps. The dispatch rule that forces movement: each step's equipment is
-chosen from a candidate pool excluding the immediately-previous equipment and any
-equipment whose *every* station equals the previous step's station; when the chosen
-equipment has more than one station, the farthest one from the previous station (by
-`BENCH_DIST_FT`, i.e. the real walking route, not a straight line) is used. Each
-step's type (Read or Write) is deterministic, not random — `classifyStepType`
-(`src/stepType.js`) keyword-matches the equipment name (readers/scopes/balances/etc.
-→ Write, since there's a measurement to record; centrifuges/shakers/incubators/etc.
-→ Read, since there's nothing to write down). Everything else is drawn from a
-`mulberry32` seeded stream (`src/rng.js`) so the same inputs always reproduce the
-same protocols. Each generated protocol carries its step list plus `stationsVisited`
-and `travelFt` (summed `BENCH_DIST_FT` across the sequence, in feet) so "does this
-actually force movement" is directly visible. Protocols are titled `Protocol 1`,
-`Protocol 2`, etc. in generation order.
+sequence of steps. Each step's type (Read or Write) is deterministic, not random —
+`classifyStepType` (`src/stepType.js`) keyword-matches the equipment name
+(readers/scopes/balances/etc. → Write, since there's a measurement to record;
+centrifuges/shakers/incubators/etc. → Read, since there's nothing to write down).
+Everything else is drawn from a `mulberry32` seeded stream (`src/rng.js`) so the
+same inputs always reproduce the same protocols. Each generated protocol carries
+its step list plus `stationsVisited` and `travelFt` (summed `BENCH_DIST_FT` across
+the sequence, in feet) so "does this actually force movement" is directly visible.
+Protocols are titled `Protocol 1`, `Protocol 2`, etc. in generation order.
 
 Every protocol is bookended *if the loaded equipment supports it*: it opens with
 some combination of Glassware/Consumables 1/Consumables 2 steps (`OPEN_POOL`) and
@@ -170,31 +165,45 @@ no-repeat subset of whichever pool members actually have equipment mapped to
 them — every count and every specific subset is equally likely (it's a
 random-length prefix of a Fisher-Yates shuffle) — so a table missing some (or
 all) of a pool's stations just uses fewer of them, or drops that bookend
-entirely, rather than inventing a step with no real equipment behind it.
-`minSteps`/`maxSteps` are honored inclusive of the bookend steps, bumped up
-automatically when the configured range is too tight to fit them. The random
-walk that fills the middle steers clear of *both entire pools* (the `reserved`
-set is `OPEN_POOL ∪ CLOSE_POOL`, all 6 station ids, regardless of which specific
-subset this protocol's bookends ended up using) — they're single, fixed
-locations with no alternate bench to reroute to, so letting the middle walk land
-on one would risk a same-station repeat right next to the real bookend step, or
-(see below) landing on a station a pipette step later turns out to need for the
-close.
+entirely, rather than inventing a step with no real equipment behind it. Within
+a bookend, equipment never repeats back-to-back (and `pickPoolSubset` never picks
+the same station twice), so a consumable/waste step never immediately follows an
+identical one. `minSteps`/`maxSteps` are honored inclusive of the bookend steps
+and the guaranteed pipette step below, bumped up automatically when the
+configured range is too tight to fit them. The random walk that fills the middle
+steers clear of *both entire pools* (the `reserved` set is `OPEN_POOL ∪
+CLOSE_POOL`, all 6 station ids, regardless of which specific subset this
+protocol's bookends ended up using) — they're single, fixed locations with no
+alternate bench to reroute to, so letting the middle walk land on one would risk
+a repeat right next to the real bookend step, or (see below) landing on a station
+the pipette rule later turns out to need for the close.
+
+Unlike the bookends, the middle walk *does* allow the same equipment — and, for
+single-station equipment, the literal same bench — to repeat on consecutive
+steps; the "keep moving" rule now only still applies to the six pool stations,
+which the middle walk can never reach at all regardless of what's mapped there.
+Multi-station equipment is still resolved via `farthestStation`, so reusing it in
+practice still tends to route to a different bench, but that's now an emergent
+effect of the distance model rather than an enforced rule.
 
 A pipette isn't tied to one specific station — any bench with pipettes and bench
 space works — so on top of the real equipment loaded from the table, a step
-whose equipment is `"Pipette"` is always a candidate in the middle walk too,
-with the same odds of being picked as any real piece of equipment, resolved
+whose equipment is `"Pipette"` is a candidate in the middle walk, resolved
 against the fixed `PIPETTE_STATIONS` pool (`data.js`) the same farthest-station
 way as any other multi-station equipment (`generateProtocols` builds this by
 merging a synthetic `Pipette: PIPETTE_STATIONS` entry into the equipment map
-before generation, not by touching the pasted table). If a pipette step lands in
-the middle walk, the protocol is required to close with a Sharps Bin step as its
-literal *last* step (used pipette tips are sharps waste) — after the middle walk
-runs, `SHARPS` is moved to the end of the close bookend (added there if the
-close subset didn't already include it, or relocated there if `pickPoolSubset`
-had put it earlier in the subset), as long as equipment is mapped to the Sharps
-Bin, even if that pushes the protocol one step past `maxSteps`.
+before generation, not by touching the pasted table). Every protocol is
+guaranteed at least one pipette step — one middle-walk slot is pre-assigned to
+`"Pipette"` before the walk runs (`nSteps` is bumped up to guarantee that slot
+exists even when the bookends alone would already fill the configured
+`minSteps`/`maxSteps`), and any of the walk's other, ordinary draws can also
+land on `"Pipette"` by chance. Because every protocol therefore uses a pipette,
+every protocol is also required to close with a Sharps Bin step as its literal
+*last* step (used pipette tips are sharps waste) — after the middle walk runs,
+`SHARPS` is moved to the end of the close bookend (added there if the close
+subset didn't already include it, or relocated there if `pickPoolSubset` had put
+it earlier in the subset), as long as equipment is mapped to the Sharps Bin,
+even if that pushes the protocol one step past `maxSteps`.
 
 The other 2 fixtures (the recycling bin, the 4C refrigerator) aren't bookend
 steps and aren't reserved — they can appear anywhere in the middle walk if

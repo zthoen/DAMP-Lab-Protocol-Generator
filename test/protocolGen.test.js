@@ -32,14 +32,22 @@ test("different seeds diverge", () => {
   assert.notDeepEqual(a, b);
 });
 
-test("consecutive steps never sit at the same station when alternatives exist", () => {
-  const { equipToStations } = table();
-  const { protocols } = generateProtocols(equipToStations, { count: 20, minSteps: 6, maxSteps: 10, seed: 7 });
-  for (const p of protocols) {
-    for (let i = 1; i < p.steps.length; i++) {
-      assert.notEqual(p.steps[i].station, p.steps[i - 1].station, `${p.id} step ${i} repeats a station`);
+const repeatTable = () => parseLabTable(`
+Vortex Mixer\tImaging
+`.trim());
+
+test("equipment (and its station) can repeat on consecutive steps outside the pool stations, across enough seeds", () => {
+  const { equipToStations } = repeatTable();
+  let sawRepeat = false;
+  for (let seed = 0; seed < 30 && !sawRepeat; seed++) {
+    const { protocols } = generateProtocols(equipToStations, { count: 10, minSteps: 6, maxSteps: 6, seed });
+    for (const p of protocols) {
+      for (let i = 1; i < p.steps.length; i++) {
+        if (p.steps[i].station === p.steps[i - 1].station) sawRepeat = true;
+      }
     }
   }
+  assert.ok(sawRepeat, "never saw a consecutive station repeat across 300 protocols with only one non-pipette equipment option");
 });
 
 test("step count respects the configured min/max range", () => {
@@ -114,26 +122,25 @@ test("every protocol opens with a retrieval step at consumables", () => {
   for (const p of protocols) assert.equal(p.steps[0].station, "CONSUM2", `${p.id} didn't open at CONSUM2`);
 });
 
-test("every protocol closes with a disposal step at sharps and/or biohazard waste", () => {
+test("every protocol closes with the Sharps Bin as its literal last step (every protocol uses a pipette)", () => {
   const { equipToStations } = fullTable();
   const { protocols } = generateProtocols(equipToStations, { count: 15, minSteps: 4, maxSteps: 8, seed: 21 });
   for (const p of protocols) {
-    const last = p.steps[p.steps.length - 1].station;
-    assert.ok(last === "SHARPS" || last === "WASTE", `${p.id} closed at ${last}, not a disposal bin`);
+    assert.equal(p.steps[p.steps.length - 1].station, "SHARPS", `${p.id} closed at ${p.steps[p.steps.length - 1].station}, not Sharps`);
   }
 });
 
-test("some protocols dispose at both bins back to back, across enough seeds", () => {
+test("some protocols dispose at Biohazard Waste immediately before the (always-last) Sharps Bin step, across enough seeds", () => {
   const { equipToStations } = fullTable();
   let sawDouble = false;
   for (let seed = 0; seed < 30 && !sawDouble; seed++) {
     const { protocols } = generateProtocols(equipToStations, { count: 10, minSteps: 6, maxSteps: 8, seed });
     for (const p of protocols) {
       const [secondLast, last] = p.steps.slice(-2).map((s) => s.station);
-      if ((secondLast === "SHARPS" && last === "WASTE") || (secondLast === "WASTE" && last === "SHARPS")) sawDouble = true;
+      if (secondLast === "WASTE" && last === "SHARPS") sawDouble = true;
     }
   }
-  assert.ok(sawDouble, "never saw a protocol dispose at both bins across 300 protocols");
+  assert.ok(sawDouble, "never saw a protocol dispose at Biohazard Waste right before Sharps across 300 protocols");
 });
 
 test("bookend steps are still forced even when minSteps/maxSteps is too tight to fit them", () => {
@@ -243,19 +250,37 @@ test("protocols can close with the Sink, not just Sharps/Biohazard, across enoug
   assert.ok(sawSink, "never saw a protocol close with the Sink across 300 protocols");
 });
 
-test("Pipette is a valid middle-walk candidate, but not a guaranteed one, across enough seeds", () => {
+test("every protocol includes at least one Pipette step", () => {
   const { equipToStations } = poolTable();
-  let sawPipette = false;
-  let sawWithoutPipette = false;
-  for (let seed = 0; seed < 30; seed++) {
+  for (let seed = 0; seed < 15; seed++) {
     const { protocols } = generateProtocols(equipToStations, { count: 10, minSteps: 4, maxSteps: 8, seed });
     for (const p of protocols) {
-      if (p.steps.some((s) => s.equipment === "Pipette")) sawPipette = true;
-      else sawWithoutPipette = true;
+      assert.ok(p.steps.some((s) => s.equipment === "Pipette"), `${p.id} (seed ${seed}) has no Pipette step`);
     }
   }
-  assert.ok(sawPipette, "Pipette never appeared in any protocol across 300 protocols");
-  assert.ok(sawWithoutPipette, "Pipette appeared in every single protocol — it should not be guaranteed");
+});
+
+test("a Pipette step is still guaranteed with minSteps/maxSteps of 1 and no bookend stations mapped at all", () => {
+  const equipToStations = { Centrifuge: ["D2"], Microscope: ["G1"] };
+  const { protocols } = generateProtocols(equipToStations, { count: 5, minSteps: 1, maxSteps: 1, seed: 2 });
+  for (const p of protocols) {
+    assert.ok(p.steps.some((s) => s.equipment === "Pipette"), `${p.id} has no Pipette step`);
+  }
+});
+
+test("pool (consumables/waste) stations never repeat consecutively, even though other equipment can", () => {
+  const { equipToStations } = poolTable();
+  const poolIds = new Set([...OPEN_POOL_IDS, ...CLOSE_POOL_IDS]);
+  for (let seed = 0; seed < 20; seed++) {
+    const { protocols } = generateProtocols(equipToStations, { count: 10, minSteps: 4, maxSteps: 9, seed });
+    for (const p of protocols) {
+      for (let i = 1; i < p.steps.length; i++) {
+        if (poolIds.has(p.steps[i].station)) {
+          assert.notEqual(p.steps[i].station, p.steps[i - 1].station, `${p.id} (seed ${seed}) repeated a pool station consecutively`);
+        }
+      }
+    }
+  }
 });
 
 test("a Pipette step's station is always a member of PIPETTE_STATIONS", () => {
@@ -270,17 +295,12 @@ test("a Pipette step's station is always a member of PIPETTE_STATIONS", () => {
   }
 });
 
-test("a protocol that uses Pipette always closes with the Sharps Bin as its literal last step", () => {
+test("every protocol closes with the Sharps Bin as its literal last step, since every protocol uses a pipette", () => {
   const { equipToStations } = poolTable();
-  let sawPipetteProtocol = false;
-  for (let seed = 0; seed < 30; seed++) {
+  for (let seed = 0; seed < 15; seed++) {
     const { protocols } = generateProtocols(equipToStations, { count: 10, minSteps: 4, maxSteps: 8, seed });
     for (const p of protocols) {
-      if (p.steps.some((s) => s.equipment === "Pipette")) {
-        sawPipetteProtocol = true;
-        assert.equal(p.steps[p.steps.length - 1].station, "SHARPS", `${p.id} (seed ${seed}) used Pipette but didn't close with Sharps`);
-      }
+      assert.equal(p.steps[p.steps.length - 1].station, "SHARPS", `${p.id} (seed ${seed}) didn't close with Sharps`);
     }
   }
-  assert.ok(sawPipetteProtocol, "never saw a protocol use Pipette across 300 protocols");
 });

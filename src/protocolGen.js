@@ -51,13 +51,10 @@ function pickPoolSubset(rng, stationEquip, pool) {
   return shuffled.slice(0, randInt(rng, 1, shuffled.length));
 }
 
-/* Generates `count` fake protocols, each a variable-length sequence of steps whose
-   equipment is deliberately drawn from a *different* station than the previous step
-   (and the farthest of that equipment's stations from the current one, when it has
-   more than one) — so executing the protocol forces the technician to keep moving
-   around the floor instead of camping at one bench. Each step's type (Read/Write) is
-   determined by the equipment itself, not drawn at random — see stepType.js. Seeded
-   so the same inputs always produce the same protocols.
+/* Generates `count` fake protocols, each a variable-length sequence of steps. Each
+   step's type (Read/Write) is determined by the equipment itself, not drawn at
+   random — see stepType.js. Seeded so the same inputs always produce the same
+   protocols.
 
    Every protocol opens with steps at some combination of Glassware/Consumables 1/
    Consumables 2 (`OPEN_POOL`) and closes with steps at some combination of Sink/
@@ -65,27 +62,40 @@ function pickPoolSubset(rng, stationEquip, pool) {
    random-order subset of whichever pool members actually have equipment mapped to
    them, so a table missing some (or all) of a pool's stations just uses fewer of
    them (or none, dropping that bookend entirely) rather than inventing a step with
-   no real equipment behind it. `minSteps`/`maxSteps` are honored inclusive of these
-   bookend steps, bumped up automatically when the configured range is too tight to
-   fit them. The random walk that fills the middle steers clear of both entire pools
+   no real equipment behind it. Equipment never repeats back-to-back within a
+   bookend (and `pickPoolSubset` never repeats a station within one), so a
+   consumable/waste step never immediately follows an identical one. `minSteps`/
+   `maxSteps` are honored inclusive of these bookend steps (and the guaranteed
+   pipette step below), bumped up automatically when the configured range is too
+   tight to fit them.
+
+   The random walk that fills the middle steers clear of both entire pools
    (`reserved`) regardless of which specific stations ended up chosen for this
    protocol's bookends — they're single, fixed locations with no alternate bench to
    reroute to, so letting the middle walk land on one would risk either an
-   incidental same-station repeat right next to the real bookend step, or (now that
-   a pipette step can force an extra closing station after the fact, see below)
-   landing on a station that turns out to be needed for the close after all.
+   incidental repeat right next to the real bookend step, or landing on a station
+   that turns out to be needed for the close after all (see the pipette rule below).
+   Unlike the bookends, the middle walk *does* allow the same equipment (and
+   therefore, for single-station equipment, the literal same bench) to repeat
+   consecutively — the "keep moving" rule only still applies to the six pool
+   stations, which the middle walk can never reach at all. Multi-station equipment
+   (Pipette included) is still resolved via `farthestStation`, so reusing it in
+   practice still tends to route to a different bench, but that's now an emergent
+   effect of the distance model rather than an enforced rule.
 
    A pipette isn't tied to one specific station — any bench with pipettes and bench
-   space works — so a step whose equipment is "Pipette" is always a candidate here
-   too, with the same odds of being picked as any real piece of equipment, resolved
-   against the fixed `PIPETTE_STATIONS` pool (data.js) the same farthest-station way
-   as any other multi-station equipment. If a pipette step ends up in the middle
-   walk, the protocol is required to close with a Sharps Bin step as the *last* step
-   (used pipette tips are sharps waste) — after the middle walk runs, "SHARPS" is
-   moved to the end of `closeStations` (added there if it wasn't already part of the
-   chosen close subset, or relocated there if `pickPoolSubset` had placed it earlier),
-   as long as equipment is mapped there, even if that pushes the protocol one step
-   past `maxSteps`.
+   space works — so a step whose equipment is "Pipette" is always a candidate in
+   the middle walk, resolved against the fixed `PIPETTE_STATIONS` pool (data.js) the
+   same farthest-station way as any other multi-station equipment. Every protocol
+   is now guaranteed at least one pipette step: one middle-walk slot is pre-assigned
+   to "Pipette" before the walk runs (the rest are drawn normally, and may land on
+   "Pipette" again by chance). Because every protocol therefore uses a pipette, it's
+   also required to close with a Sharps Bin step as its *last* step (used pipette
+   tips are sharps waste) — after the middle walk runs, "SHARPS" is moved to the end
+   of `closeStations` (added there if it wasn't already part of the chosen close
+   subset, or relocated there if `pickPoolSubset` had placed it earlier), as long as
+   equipment is mapped there, even if that pushes the protocol one step past
+   `maxSteps`.
 
    The other 2 fixtures (recycling, the 4C refrigerator) aren't bookend steps and
    aren't reserved, so they can appear anywhere in the middle walk if equipment is
@@ -122,7 +132,7 @@ export function generateProtocols(equipToStations, opts = {}) {
     warnings.push("No equipment mapped to the Sink, Biohazard Waste, or Sharps Bin — protocols won't close with a disposal step.");
   }
   if (!stationEquip.SHARPS?.length) {
-    warnings.push("No equipment mapped to the Sharps Bin — a protocol that uses a pipette won't be able to add the required disposal step.");
+    warnings.push("No equipment mapped to the Sharps Bin — every protocol uses a pipette and won't be able to add the required disposal step.");
   }
 
   const reserved = new Set([...OPEN_POOL, ...CLOSE_POOL]);
@@ -132,7 +142,9 @@ export function generateProtocols(equipToStations, opts = {}) {
     const openStations = pickPoolSubset(rng, stationEquip, OPEN_POOL);
     let closeStations = pickPoolSubset(rng, stationEquip, CLOSE_POOL);
     const bookendCount = openStations.length + closeStations.length;
-    const nSteps = Math.max(randInt(rng, minSteps, maxSteps), bookendCount || 1);
+    // +1 guarantees room for the mandatory pipette step below, on top of whatever
+    // bookend steps this protocol ended up with.
+    const nSteps = Math.max(randInt(rng, minSteps, maxSteps), bookendCount + 1);
 
     const steps = [];
     let prevStation = null;
@@ -147,23 +159,30 @@ export function generateProtocols(equipToStations, opts = {}) {
       prevEquip = equip;
     }
 
+    // middleCount is always >= 1 (see the nSteps bump above), so there's always a
+    // slot to pin to "Pipette" — every protocol gets at least one pipette step.
     const middleCount = nSteps - openStations.length - closeStations.length;
-    let usedPipette = false;
+    const forcedPipetteIndex = randInt(rng, 0, middleCount - 1);
     for (let i = 0; i < middleCount; i++) {
-      let candidates = equipment.filter((e) => e !== prevEquip && equipToStationsFull[e].some((s) => s !== prevStation && !reserved.has(s)));
-      if (candidates.length === 0) candidates = equipment.filter((e) => e !== prevEquip && equipToStationsFull[e].some((s) => s !== prevStation));
-      if (candidates.length === 0) candidates = equipment.filter((e) => e !== prevEquip);
-      if (candidates.length === 0) candidates = equipment;
-
-      const equip = pick(rng, candidates);
-      if (equip === "Pipette") usedPipette = true;
+      let equip;
+      if (i === forcedPipetteIndex) {
+        equip = "Pipette";
+      } else {
+        // No e !== prevEquip check here: the same equipment (and, for
+        // single-station equipment, the literal same bench) is allowed to repeat
+        // on consecutive steps — the only stations middle-walk equipment can
+        // never reach at all are the six pool stations, via `reserved`.
+        const candidates = equipment.filter((e) => equipToStationsFull[e].some((s) => !reserved.has(s)));
+        equip = pick(rng, candidates);
+      }
       const station = farthestStation(equipToStationsFull[equip], prevStation, reserved);
       steps.push({ equipment: equip, station, action: classifyStepType(equip) });
       prevStation = station;
       prevEquip = equip;
     }
 
-    if (usedPipette && stationEquip.SHARPS?.length) {
+    // Every protocol uses a pipette (above), so every protocol needs this close.
+    if (stationEquip.SHARPS?.length) {
       closeStations = closeStations.filter((s) => s !== "SHARPS");
       closeStations.push("SHARPS");
     }
