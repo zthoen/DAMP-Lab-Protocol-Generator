@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { generateProtocols } from "../src/protocolGen.js";
 import { parseLabTable } from "../src/labTable.js";
-import { BENCH_DIST_FT } from "../src/data.js";
+import { BENCH_DIST_FT, PIPETTE_STATIONS } from "../src/data.js";
 
 const table = () => parseLabTable(`
 Opentrons Flex Robot\tOpentrons
@@ -165,4 +165,122 @@ test("a table parsed with no fixtures mentioned never opens/closes with a fixtur
   for (const p of protocols) {
     for (const s of p.steps) assert.ok(!fixtureIds.has(s.station), `${p.id} visited fixture ${s.station}, which has no mapped equipment`);
   }
+});
+
+// Maps equipment to every OPEN_POOL/CLOSE_POOL station (Glassware, Consumables 1,
+// Consumables 2, Sink, Biohazard Waste, Sharps Bin) plus a handful of ordinary
+// benches for the middle random walk, so the open/close pool subset logic and the
+// Pipette injection both have real equipment to exercise.
+const poolTable = () => parseLabTable(`
+Glassware Cart\tGlassware
+Consumables Restock 1\tConsumables 1
+Consumables Restock 2\tConsumables 2
+Wash Station\tSink
+Autoclave Bags\tBiohazard Waste
+Used Pipette Tips\tSharps Bin
+Opentrons Flex Robot\tOpentrons
+Gel Doc\tGel Imaging
+Thermal Cycler\tDNA Prep
+Centrifuge\tPCR
+Microscope\tResearch
+Vortex Mixer\tImaging
+`.trim());
+
+const OPEN_POOL_IDS = new Set(["GLASSWARE", "CONSUM1", "CONSUM2"]);
+const CLOSE_POOL_IDS = new Set(["SINK", "WASTE", "SHARPS"]);
+
+test("the shared pool test fixture parses with no errors", () => {
+  const t = poolTable();
+  assert.equal(t.errors.length, 0);
+});
+
+test("open-pool stations only ever appear as a prefix, and close-pool stations only ever appear as a suffix", () => {
+  const { equipToStations } = poolTable();
+  for (let seed = 0; seed < 20; seed++) {
+    const { protocols } = generateProtocols(equipToStations, { count: 10, minSteps: 4, maxSteps: 9, seed });
+    for (const p of protocols) {
+      let sawNonOpen = false;
+      for (const s of p.steps) {
+        if (OPEN_POOL_IDS.has(s.station)) {
+          assert.ok(!sawNonOpen, `${p.id} (seed ${seed}) has an open-pool station after a non-open-pool step`);
+        } else {
+          sawNonOpen = true;
+        }
+      }
+      let sawClose = false;
+      for (const s of p.steps) {
+        if (CLOSE_POOL_IDS.has(s.station)) {
+          sawClose = true;
+        } else {
+          assert.ok(!sawClose, `${p.id} (seed ${seed}) has a non-close-pool station after a close-pool step`);
+        }
+      }
+    }
+  }
+});
+
+test("protocols can open with Glassware and Consumables 1, not just Consumables 2, across enough seeds", () => {
+  const { equipToStations } = poolTable();
+  const opened = new Set();
+  for (let seed = 0; seed < 30; seed++) {
+    const { protocols } = generateProtocols(equipToStations, { count: 10, minSteps: 4, maxSteps: 8, seed });
+    for (const p of protocols) opened.add(p.steps[0].station);
+  }
+  assert.ok(opened.has("GLASSWARE"), "never saw a protocol open at Glassware");
+  assert.ok(opened.has("CONSUM1"), "never saw a protocol open at Consumables 1");
+  assert.ok(opened.has("CONSUM2"), "never saw a protocol open at Consumables 2");
+});
+
+test("protocols can close with the Sink, not just Sharps/Biohazard, across enough seeds", () => {
+  const { equipToStations } = poolTable();
+  let sawSink = false;
+  for (let seed = 0; seed < 30 && !sawSink; seed++) {
+    const { protocols } = generateProtocols(equipToStations, { count: 10, minSteps: 4, maxSteps: 8, seed });
+    for (const p of protocols) {
+      if (p.steps.some((s) => s.station === "SINK")) sawSink = true;
+    }
+  }
+  assert.ok(sawSink, "never saw a protocol close with the Sink across 300 protocols");
+});
+
+test("Pipette is a valid middle-walk candidate, but not a guaranteed one, across enough seeds", () => {
+  const { equipToStations } = poolTable();
+  let sawPipette = false;
+  let sawWithoutPipette = false;
+  for (let seed = 0; seed < 30; seed++) {
+    const { protocols } = generateProtocols(equipToStations, { count: 10, minSteps: 4, maxSteps: 8, seed });
+    for (const p of protocols) {
+      if (p.steps.some((s) => s.equipment === "Pipette")) sawPipette = true;
+      else sawWithoutPipette = true;
+    }
+  }
+  assert.ok(sawPipette, "Pipette never appeared in any protocol across 300 protocols");
+  assert.ok(sawWithoutPipette, "Pipette appeared in every single protocol — it should not be guaranteed");
+});
+
+test("a Pipette step's station is always a member of PIPETTE_STATIONS", () => {
+  const { equipToStations } = poolTable();
+  for (let seed = 0; seed < 15; seed++) {
+    const { protocols } = generateProtocols(equipToStations, { count: 10, minSteps: 4, maxSteps: 8, seed });
+    for (const p of protocols) {
+      for (const s of p.steps) {
+        if (s.equipment === "Pipette") assert.ok(PIPETTE_STATIONS.includes(s.station), `${p.id} placed Pipette at ${s.station}, outside PIPETTE_STATIONS`);
+      }
+    }
+  }
+});
+
+test("a protocol that uses Pipette always closes with the Sharps Bin as its literal last step", () => {
+  const { equipToStations } = poolTable();
+  let sawPipetteProtocol = false;
+  for (let seed = 0; seed < 30; seed++) {
+    const { protocols } = generateProtocols(equipToStations, { count: 10, minSteps: 4, maxSteps: 8, seed });
+    for (const p of protocols) {
+      if (p.steps.some((s) => s.equipment === "Pipette")) {
+        sawPipetteProtocol = true;
+        assert.equal(p.steps[p.steps.length - 1].station, "SHARPS", `${p.id} (seed ${seed}) used Pipette but didn't close with Sharps`);
+      }
+    }
+  }
+  assert.ok(sawPipetteProtocol, "never saw a protocol use Pipette across 300 protocols");
 });

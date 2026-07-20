@@ -162,34 +162,53 @@ and `travelFt` (summed `BENCH_DIST_FT` across the sequence, in feet) so "does th
 actually force movement" is directly visible. Protocols are titled `Protocol 1`,
 `Protocol 2`, etc. in generation order.
 
-Every protocol is bookended *if the loaded equipment supports it*: it opens with a
-retrieve-equipment step at Consumables 2 and closes with a dispose-of-waste step at
-the sharps bin, the biohazard box, or (`DOUBLE_DISPOSAL_CHANCE`, 30% of the time)
-both back to back in a random order — `pickDisposalStations` picks from whichever of
-the two bins actually has equipment mapped to it. Since no fixture carries built-in
-equipment (see above), this only happens when the pasted table itself maps something
-to `CONSUM2`/`SHARPS`/`WASTE`; otherwise `generateProtocols` degrades gracefully —
-a warning, not a crash — and those protocols are a plain random walk with no bookend
-at all. `minSteps`/`maxSteps` are honored inclusive of the bookend steps when they do
-apply, bumped up automatically when the configured range is too tight to fit them.
-The random walk that fills the middle steers clear of Consumables 2 and whichever
-bin(s) close the protocol out (the `reserved` set built from
-`opensWithRetrieve`/`disposal` before the middle loop runs) — those stations are
-single, fixed locations with no alternate bench to reroute to, so letting the middle
-walk land on one right before the bookend uses the same station would create a
-same-station repeat the "never camp two steps running" rule can't route around any
-other way.
+Every protocol is bookended *if the loaded equipment supports it*: it opens with
+some combination of Glassware/Consumables 1/Consumables 2 steps (`OPEN_POOL`) and
+closes with some combination of Sink/Biohazard Waste/Sharps Bin steps
+(`CLOSE_POOL`). `pickPoolSubset` draws a random-size (1..N), random-order,
+no-repeat subset of whichever pool members actually have equipment mapped to
+them — every count and every specific subset is equally likely (it's a
+random-length prefix of a Fisher-Yates shuffle) — so a table missing some (or
+all) of a pool's stations just uses fewer of them, or drops that bookend
+entirely, rather than inventing a step with no real equipment behind it.
+`minSteps`/`maxSteps` are honored inclusive of the bookend steps, bumped up
+automatically when the configured range is too tight to fit them. The random
+walk that fills the middle steers clear of *both entire pools* (the `reserved`
+set is `OPEN_POOL ∪ CLOSE_POOL`, all 6 station ids, regardless of which specific
+subset this protocol's bookends ended up using) — they're single, fixed
+locations with no alternate bench to reroute to, so letting the middle walk land
+on one would risk a same-station repeat right next to the real bookend step, or
+(see below) landing on a station a pipette step later turns out to need for the
+close.
 
-Any fixture isn't a bookend step by default (only `CONSUM2`/`SHARPS`/`WASTE` ever
-are, and only when equipment is mapped there) — the rest can appear anywhere in the
-middle walk if a pasted row maps equipment to them. A random walk over a large
-equipment pool can still miss a fixture across a small batch, so after the normal
-draw, `generateProtocols` checks whether every fixture *with equipment mapped to it*
-was actually visited by some step; if any weren't, one extra "coverage" protocol is
-appended that walks to each missed fixture in turn. This coverage protocol isn't held
-to the bookend rule (it's a single-purpose fixture-visit, not a simulated protocol).
-A table that never maps equipment to any fixture never visits one at all — the map's
-fixtures are only ever reachable through equipment the user's table put there.
+A pipette isn't tied to one specific station — any bench with pipettes and bench
+space works — so on top of the real equipment loaded from the table, a step
+whose equipment is `"Pipette"` is always a candidate in the middle walk too,
+with the same odds of being picked as any real piece of equipment, resolved
+against the fixed `PIPETTE_STATIONS` pool (`data.js`) the same farthest-station
+way as any other multi-station equipment (`generateProtocols` builds this by
+merging a synthetic `Pipette: PIPETTE_STATIONS` entry into the equipment map
+before generation, not by touching the pasted table). If a pipette step lands in
+the middle walk, the protocol is required to close with a Sharps Bin step as its
+literal *last* step (used pipette tips are sharps waste) — after the middle walk
+runs, `SHARPS` is moved to the end of the close bookend (added there if the
+close subset didn't already include it, or relocated there if `pickPoolSubset`
+had put it earlier in the subset), as long as equipment is mapped to the Sharps
+Bin, even if that pushes the protocol one step past `maxSteps`.
+
+The other 2 fixtures (the recycling bin, the 4C refrigerator) aren't bookend
+steps and aren't reserved — they can appear anywhere in the middle walk if
+equipment is mapped there. A random walk over a large equipment pool can still
+miss a fixture across a small batch, so after the normal draw,
+`generateProtocols` checks whether every fixture *with equipment mapped to it*
+(bookend pools included) was actually visited by some step; if any weren't, one
+extra "coverage" protocol is appended that walks to each missed fixture in turn.
+This coverage protocol isn't held to the bookend rule (it's a single-purpose
+fixture-visit, not a simulated protocol). A table that never maps equipment to a
+given fixture never visits it at all — the map's fixtures are only ever
+reachable through equipment the user's table put there (Pipette, resolved
+against its own hardcoded pool, is the one deliberate exception, same as in
+`protocolImport.js` below).
 
 **Protocol import (`src/protocolImport.js`)** — `parseProtocol(raw, equipToStations)`
 is the counterpart to `protocolGen.js` for a *real* protocol pasted from a
