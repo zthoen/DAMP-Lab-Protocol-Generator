@@ -21,6 +21,19 @@ const randInt = (rng, min, max) => min + Math.floor(rng() * (max - min + 1));
 // so it can be tuned/tested.
 const DEFAULT_EXACT_BUDGET = 50_000_000;
 
+// When the relevant-station count is too large for exactSearch, the fallback
+// sweeps every one of these seeds (not just one) and keeps the single best
+// result across all of them — a single seed's random walk can get stuck in a
+// mediocre local optimum, but 24 independent walks starting from different
+// random points very rarely all land on the same one. This is what makes the
+// fallback deterministic and reliable without asking the user to manually
+// hunt for a better seed themselves. Exposed as `opts.seeds` (an explicit
+// array) for tests that want a smaller, faster sweep.
+const DEFAULT_SEEDS = [
+  1, 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31,
+  101, 211, 307, 401, 503, 601, 701, 809, 907, 1009, 1201, 1301,
+];
+
 // An identity permutation: every bench keeps the name it has today. This is
 // always evaluated as a candidate (see optimizeLayout below), so the Lab
 // Optimizer can never recommend something worse than the real, current floor.
@@ -366,13 +379,16 @@ function describeLayout(benchOf, anchorKey, equipToStations, protocolTexts) {
    enumerate within `opts.exactBudget` arrangements (`exactSearch`, tried
    independently for every anchor the trio's relevance makes worth trying),
    the result is the *actual, provably optimal* layout for these protocols —
-   not a best guess — and is completely deterministic (the seed plays no
-   part). Only when the relevant-name count is too large for that budget does
-   it fall back to a seeded local search (`hillClimbRestricted`) — still
-   restricted to just the relevant names, so even the fallback explores a far
-   smaller and more targeted space than the old all-24-names search did, and
-   should converge to the same answer far more consistently across seeds.
-   Either way, the raw result can still differ from the real layout in places
+   not a best guess. Only when the relevant-name count is too large for that
+   budget does it fall back to a seeded local search (`hillClimbRestricted`)
+   — restricted to just the relevant names, so even the fallback explores a
+   far smaller and more targeted space than searching all 24 names would.
+   Rather than trusting one seed's random walk (which can get stuck in a
+   mediocre local optimum), the fallback sweeps every seed in `DEFAULT_SEEDS`
+   (or `opts.seeds`, for a smaller/faster sweep) independently and keeps the
+   single best result across all of them — deterministic and reliable without
+   needing anyone to manually hunt for a better seed. Either way, the raw
+   result can still differ from the real layout in places
    that don't actually affect any pasted protocol, so `minimizeMoves` reverts
    every displaced bench it can put back without losing any of the
    improvement found, leaving only the moves that matter — and a final check
@@ -394,7 +410,10 @@ function describeLayout(benchOf, anchorKey, equipToStations, protocolTexts) {
    `relevantStationCount` (how many of the 24 benches the search actually had
    to consider), and `warnings`. */
 export function optimizeLayout(equipToStations, protocolTexts, opts = {}) {
-  const { seed = 1234, restarts = 3, iterationsPerRestart = 150, exactBudget = DEFAULT_EXACT_BUDGET } = opts;
+  const {
+    restarts = 3, iterationsPerRestart = 400, exactBudget = DEFAULT_EXACT_BUDGET,
+    seeds = opts.seed != null ? [opts.seed] : DEFAULT_SEEDS,
+  } = opts;
   const cleanTexts = (protocolTexts || []).map((t) => t || "").filter((t) => t.trim());
 
   const warnings = [];
@@ -417,7 +436,6 @@ export function optimizeLayout(equipToStations, protocolTexts, opts = {}) {
   const arrangementsPerAnchor = R > 0 ? permutationCount(24, R) : 0;
   const useExact = R === 0 || arrangementsPerAnchor * totalSteps * anchorsToTry.length <= exactBudget;
 
-  const rng = mulberry32(seed);
   let bestPartial = {};
   let bestAnchorKey = DEFAULT_TRIO_ANCHOR;
   let bestCost = Infinity;
@@ -431,15 +449,21 @@ export function optimizeLayout(equipToStations, protocolTexts, opts = {}) {
     } else if (useExact) {
       ({ benchOf: candidatePartial, cost: candidateCost } = exactSearch(relevantNames, plans, distTable));
     } else {
+      // Sweep every seed independently, keeping the single best result found
+      // across all of them — see DEFAULT_SEEDS for why this, not one seed's
+      // restarts alone, is what makes the fallback reliably strong.
       const restrictedBaseline = Object.fromEntries(relevantNames.map((n) => [n, baselineBenchOf[n]]));
-      const starts = [
-        restrictedBaseline,
-        ...Array.from({ length: Math.max(0, restarts - 1) }, () => randomRestart(baselineBenchOf, relevantNames, rng)),
-      ];
       candidateCost = Infinity;
-      for (const start of starts) {
-        const { benchOf, cost } = hillClimbRestricted(start, relevantNames, plans, distTable, rng, iterationsPerRestart);
-        if (cost < candidateCost) { candidateCost = cost; candidatePartial = benchOf; }
+      for (const seedValue of seeds) {
+        const rng = mulberry32(seedValue);
+        const starts = [
+          restrictedBaseline,
+          ...Array.from({ length: Math.max(0, restarts - 1) }, () => randomRestart(baselineBenchOf, relevantNames, rng)),
+        ];
+        for (const start of starts) {
+          const { benchOf, cost } = hillClimbRestricted(start, relevantNames, plans, distTable, rng, iterationsPerRestart);
+          if (cost < candidateCost) { candidateCost = cost; candidatePartial = benchOf; }
+        }
       }
     }
     if (candidateCost < bestCost) { bestCost = candidateCost; bestPartial = candidatePartial; bestAnchorKey = anchorKey; }
