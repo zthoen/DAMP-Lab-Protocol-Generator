@@ -294,9 +294,8 @@ needing its own copy of this nearest-station walking logic.
 **Lab Optimizer (`src/labOptimizer.js`)** — `optimizeLayout(equipToStations,
 protocolTexts, opts)` searches for a station layout that minimizes total travel
 distance across a set of pasted real protocols (same Step/Substep/Equipment
-format `protocolImport.js` parses), sharing that exact parsing/nearest-station
-logic rather than duplicating it. A candidate layout is a `benchOf` permutation
-(bench name → physical id, covering exactly the 24 real names from
+format `protocolImport.js` parses). A candidate layout is a `benchOf`
+permutation (bench name → physical id, covering exactly the 24 real names from
 `BENCH_NAMES`) plus an `anchorKey` (`"BC"`/`"DE"`/`"FG"`) for the sharps/
 recycling/biohazard trio — together these encode the three constraints on what's
 allowed to move: only the fixed A1-H3 grid exists (`benchOf` only ever draws
@@ -305,32 +304,59 @@ from `BENCH_NAMES`'s own ids); the Sink, Glassware, Consumables 1, Consumables
 `remapId` passes their id straight through untouched); and the trio can only
 relocate as a group, to one of the 3 touching pairs, keeping its fixed
 left-to-right order (`DIST_TABLES_BY_ANCHOR`/`trioFixturesForAnchor` in
-data.js already enforce that). `remapEquipToStations` turns the real,
-current `equipToStations` (equipment → physical ids) into a candidate one by
-converting each id to its real station *name* (`STATION_NAME[id]`, layout-
-invariant) and back through the candidate's own `benchOf` — the same trick
-handles "Pipette" steps, by remapping `PIPETTE_STATION_NAMES` through
-`benchOf` before handing it to `parseProtocol` as `pipetteStations`, so a
-pipette-capable bench that got moved is still found where it actually is now.
+data.js already enforce that).
 
-Since exhaustively trying all 24! bench permutations (times 3 anchors) is
-impossible, `hillClimb` runs a seeded simulated-annealing local search per
-anchor — several restarts (one always the identity permutation, so a restart
-can never make its own anchor's result worse than doing nothing) doing random
-pairwise bench-name swaps, accepting worse ones early on with a decaying
-probability so it can climb out of local minima, and remembering the best
-`benchOf` any restart ever reached. The overall best across all anchors then
-goes through `minimizeMoves` — annealing has no reason to prefer the baseline
-among stations whose arrangement makes no difference to the pasted protocols,
-so its raw output can carry along pointless swaps; `minimizeMoves` greedily
-reverts one displaced bench at a time (swapping it back to its baseline
-position together with whoever's squatting there) whenever that doesn't
-increase the total, until nothing more can be undone. What's left is the
-smallest set of moves that still achieves the best score found — this, not the
-raw search output, is what the UI shows as "recommended moves". Neither step
-claims a provably optimal layout, and the baseline (today's real layout) is
-always evaluated as a candidate too, so the result is never worse than doing
-nothing.
+Every one of the 24 bench names a pasted protocol set never actually
+references costs the same wherever it sits — nothing ever looks its position
+up — so the search only ever needs to decide where to put the ones that *are*
+referenced. `planSteps` pre-parses each protocol once (reusing
+`parseProtocol`'s own row/step/substep splitting, via a throwaway call with an
+empty equipment map) into a layout-independent plan: for each substep, the
+list of "identifiers" — bench *names* or fixture *ids* — its equipment could
+resolve to, so no protocol text ever needs re-parsing while candidate layouts
+are being tried. `relevantNamesFrom` unions those across every step of every
+protocol to get the small set of bench names ("Pipette" pulls in all 8
+`PIPETTE_STATION_NAMES` at once) the search actually has to place, and flags
+whether the trio is referenced at all (skipping the other 2 anchors entirely
+when it isn't). `resolveSequence` walks a plan under a candidate `benchOf`
+with the same nearest-of-several-candidates logic as
+`protocolImport.js`'s `nearestStation`/`travelFtOf` (verified equivalent to it
+by the exactness tests below), just without allocating an intermediate
+equipment map per call — `benchOf[identifier] ?? identifier` resolves a bench
+name through the candidate layout or passes a fixture id straight through,
+since fixture ids are never keys in `benchOf`.
+
+Because only those relevant names matter, `exactSearch` can afford to
+brute-force *every* way to place them across the 24 real ids (backtracking,
+no pruning) whenever that arrangement count — `permutationCount(24, R)` times
+the total step count, times how many anchors are worth trying — fits under
+`opts.exactBudget` (`DEFAULT_EXACT_BUDGET`, tuned from benchmarking
+`resolveSequence` at ~30ns per arrangement-step to target roughly a 1.5s worst
+case). When it fits, the result is the *actual, provably optimal* layout for
+these protocols, not a best guess, and it's completely deterministic — the
+seed plays no part. Only when there are too many relevant names for that
+budget does `optimizeLayout` fall back to `hillClimbRestricted`, a seeded
+simulated-annealing local search — still restricted to swapping only relevant
+names into random positions (never wasting an iteration on two names whose
+placement can't matter), so even the fallback explores a far smaller,
+better-targeted space than an earlier version of this search that considered
+all 24 names regardless of relevance did.
+
+Either way, `completeBenchOf` fills in every leftover bench name arbitrarily
+(baseline order) to round the relevant-only assignment out into a full
+24-name `benchOf`, and the raw result still goes through two safety steps
+before being reported: a check against the slow, proven `totalTravelFt` (the
+same `parseProtocol`-based path the Protocol Visualizer uses) that discards
+the fast search's proposal outright if it's ever somehow worse than doing
+nothing, and `minimizeMoves`, which greedily reverts one displaced bench at a
+time back to its baseline position (swapping with whoever's squatting there)
+whenever that doesn't increase the total, until nothing more can be undone —
+turning "every name the search happened to touch" into "only the moves that
+actually matter," which is what the UI shows as "recommended moves." Because
+the final number always comes from that same proven `totalTravelFt`/
+`describeLayout` path regardless of which search strategy proposed the
+layout, a bug in the fast exact/heuristic engine could only ever cause a
+missed improvement — never a wrong "optimized" figure shown to the user.
 
 Returns `baseline` and `best`, each `{ anchorKey, benchOf, totalTravelFt,
 perProtocol, stationNames, fixtures, stationEquip, visitCounts }` —
@@ -343,9 +369,12 @@ protocol under that layout) is tallied for free off the same per-protocol
 (`{ name, from, to }` for every bench that actually moved), `totalMoves`
 (`moves.length`, plus 3 if the trio relocated — it's 3 real stations moving
 together even though that's reported as one `anchorChanged` flag rather than
-3 more `moves` rows), `anchorChanged`, `improvementFt`, `improvementPct`, and
-`warnings` (no equipment loaded / no protocols pasted, mirroring the other
-generators' graceful-degradation style).
+3 more `moves` rows), `anchorChanged`, `improvementFt`, `improvementPct`,
+`optimal` (true when the result is the proven global optimum rather than a
+best-effort search result — `LabOptimizerTab.jsx`'s banner reports this
+directly), `relevantStationCount` (how many of the 24 benches the search
+actually had to consider), and `warnings` (no equipment loaded / no protocols
+pasted, mirroring the other generators' graceful-degradation style).
 
 **UI (`src/`)** — four tabs driven by `App.jsx`, sharing one parsed `labData`
 (`parseLabTable` over the raw pasted text, memoized in `App.jsx`):
@@ -421,15 +450,21 @@ generators' graceful-degradation style).
   drives an array of textareas (one per protocol, same Step/Substep/Equipment
   paste format as `ProtocolImportTab.jsx`, session-persisted the same way under
   a different key) plus an "Optimize" button that calls `optimizeLayout`. The
-  result renders as a stat row (current/optimized total ft, ft+% saved, and
-  `totalMoves`), a side-by-side pair of heat-mapped `LabMap`s — "Optimized
-  layout" first/left (the result the user is here for), "Current layout"
-  second/right for comparison, each fed its own `stationNames`/`fixtures`/
-  `stationEquip`/`heatCounts` (from `result.best`/`result.baseline`) via the
-  override props above — and a "Recommended moves" table (`{ name, from, to }`,
-  the From column in `C.red` and To in `C.green` so a move reads at a glance,
-  plus a called-out line if the trio's anchor changed). This tab intentionally
-  only *reports* the suggested layout; it doesn't rewrite `data.js`'s hardcoded
+  button defers that call a tick (`setTimeout(fn, 0)`, flipping an
+  `isOptimizing` flag first) so it can repaint to "Optimizing…" before an
+  exact search's worst-case second-or-two runs, rather than just looking
+  unresponsive until it's done. The result renders as an `OptimalityBanner`
+  (green "provably optimal" using `result.optimal`/`relevantStationCount`
+  when the search verified every arrangement, amber "best-effort" otherwise),
+  a stat row (current/optimized total ft, ft+% saved, and `totalMoves`), a
+  side-by-side pair of heat-mapped `LabMap`s — "Optimized layout" first/left
+  (the result the user is here for), "Current layout" second/right for
+  comparison, each fed its own `stationNames`/`fixtures`/`stationEquip`/
+  `heatCounts` (from `result.best`/`result.baseline`) via the override props
+  above — and a "Recommended moves" table (`{ name, from, to }`, the From
+  column in `C.red` and To in `C.green` so a move reads at a glance, plus a
+  called-out line if the trio's anchor changed). This tab intentionally only
+  *reports* the suggested layout; it doesn't rewrite `data.js`'s hardcoded
   `BENCH_NAMES` or affect any other tab, consistent with every other tab here
   being a read-only analysis view over the real, fixed floor plan.
 - `Controls.jsx`: shared widgets carried over from the original sim UI — trimmed
