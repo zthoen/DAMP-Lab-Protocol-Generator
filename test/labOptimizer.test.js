@@ -150,3 +150,35 @@ test("stationNames/fixtures/stationEquip are present and consistent on both base
     assert.equal(typeof layout.stationEquip, "object");
   }
 });
+
+test("no equipment/no protocols returns totalMoves 0 instead of throwing", () => {
+  const out = optimizeLayout({}, []);
+  assert.equal(out.totalMoves, 0);
+});
+
+test("totalMoves is moves.length, plus 3 when the trio relocated as a group", () => {
+  for (let seed = 0; seed < 8; seed++) {
+    const out = optimizeLayout(table(), [bounceProtocol()], { seed });
+    assert.equal(out.totalMoves, out.moves.length + (out.anchorChanged ? 3 : 0), `seed ${seed}`);
+  }
+  // Cover the anchor-changed branch too, using the trio-favoring scenario.
+  for (let seed = 0; seed < 10; seed++) {
+    const out = optimizeLayout(trioTable(), [trioProtocol(), trioProtocol()], { seed });
+    assert.equal(out.totalMoves, out.moves.length + (out.anchorChanged ? 3 : 0), `trio seed ${seed}`);
+  }
+});
+
+test("visitCounts tallies total resolved station visits across all pasted protocols", () => {
+  const out = optimizeLayout(table(), [bounceProtocol()], { seed: 5 });
+  // bounceProtocol has 6 substeps and both pieces of equipment it uses are
+  // mapped, so every substep resolves to a station under any layout.
+  for (const layout of [out.baseline, out.best]) {
+    const totalVisits = Object.values(layout.visitCounts).reduce((a, b) => a + b, 0);
+    assert.equal(totalVisits, 6);
+  }
+});
+
+test("visitCounts is empty (not present) for a station nothing ever visits", () => {
+  const out = optimizeLayout(table(), [bounceProtocol()], { seed: 5 });
+  assert.equal(out.best.visitCounts.REFRIGERATOR ?? 0, 0);
+});

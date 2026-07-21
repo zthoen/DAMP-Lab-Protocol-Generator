@@ -333,11 +333,17 @@ always evaluated as a candidate too, so the result is never worse than doing
 nothing.
 
 Returns `baseline` and `best`, each `{ anchorKey, benchOf, totalTravelFt,
-perProtocol, stationNames, fixtures, stationEquip }` — `stationNames`/
-`fixtures`/`stationEquip` are pre-built in the exact shape `LabMap.jsx`'s
-override props expect, so the tab can render either layout without its own
-remapping code — plus `moves` (`{ name, from, to }` for every bench that
-actually moved), `anchorChanged`, `improvementFt`, `improvementPct`, and
+perProtocol, stationNames, fixtures, stationEquip, visitCounts }` —
+`stationNames`/`fixtures`/`stationEquip`/`visitCounts` are pre-built in the
+exact shape `LabMap.jsx`'s override props expect, so the tab can render either
+layout (heat map included) without its own remapping code. `visitCounts`
+(station id → how many times it's stepped on, summed across every pasted
+protocol under that layout) is tallied for free off the same per-protocol
+`parseProtocol` call `perProtocol` already needs. Also returns `moves`
+(`{ name, from, to }` for every bench that actually moved), `totalMoves`
+(`moves.length`, plus 3 if the trio relocated — it's 3 real stations moving
+together even though that's reported as one `anchorChanged` flag rather than
+3 more `moves` rows), `anchorChanged`, `improvementFt`, `improvementPct`, and
 `warnings` (no equipment loaded / no protocols pasted, mirroring the other
 generators' graceful-degradation style).
 
@@ -370,7 +376,14 @@ generators' graceful-degradation style).
   `stationNames` (id → name) and `fixtures` (id → pixel box) — can override either,
   which is how `LabOptimizerTab.jsx` renders a candidate layout (relabeled benches,
   a relocated trio box) without the component needing any layout-specific logic of
-  its own; every other tab just omits them and gets the real, current map. A
+  its own; every other tab just omits them and gets the real, current map. A third
+  optional prop, `heatCounts` (station id → visit count), switches every box's fill
+  from the plain empty/has-equipment coloring to a heat map: `heatFill` mixes
+  `C.slot` (unvisited, the same neutral gray as "empty") toward `C.red` by
+  `count / maxCount` (via `mixHex` in constants.js), with a 0.2 floor so even a
+  single visit reads as visibly hotter than zero; each box's corner label switches
+  from "N eq" to "N visits" to match, and the bottom legend swaps its two-swatch
+  key for a gradient bar between "0 visits" and the busiest station's count. A
   multi-step `highlightPath` is expanded through
   `routeWaypoints` per consecutive pair into one continuous **solid** line (always
   touching the front of every bench it uses and the middle of every walkway it
@@ -408,16 +421,22 @@ generators' graceful-degradation style).
   drives an array of textareas (one per protocol, same Step/Substep/Equipment
   paste format as `ProtocolImportTab.jsx`, session-persisted the same way under
   a different key) plus an "Optimize" button that calls `optimizeLayout`. The
-  result renders as a stat row (current/optimized total ft, ft+% saved), a
-  side-by-side pair of `LabMap`s — "Current layout" plain, "Optimized layout"
-  fed `result.best`'s `stationNames`/`fixtures`/`stationEquip` via the override
-  props above — and a "Recommended moves" table (`{ name, from, to }`, plus a
-  called-out line if the trio's anchor changed). This tab intentionally only
-  *reports* the suggested layout; it doesn't rewrite `data.js`'s hardcoded
+  result renders as a stat row (current/optimized total ft, ft+% saved, and
+  `totalMoves`), a side-by-side pair of heat-mapped `LabMap`s — "Optimized
+  layout" first/left (the result the user is here for), "Current layout"
+  second/right for comparison, each fed its own `stationNames`/`fixtures`/
+  `stationEquip`/`heatCounts` (from `result.best`/`result.baseline`) via the
+  override props above — and a "Recommended moves" table (`{ name, from, to }`,
+  the From column in `C.red` and To in `C.green` so a move reads at a glance,
+  plus a called-out line if the trio's anchor changed). This tab intentionally
+  only *reports* the suggested layout; it doesn't rewrite `data.js`'s hardcoded
   `BENCH_NAMES` or affect any other tab, consistent with every other tab here
   being a read-only analysis view over the real, fixed floor plan.
-- `Controls.jsx`: shared widgets (`NumField`, `Dropdown`, `StatCard`, `InfoDot`,
-  `Slider`, `Toggle`, `Section`, `Panel`) carried over from the original sim UI.
+- `Controls.jsx`: shared widgets carried over from the original sim UI — trimmed
+  down to just `NumField` (protocol count / min-max steps / seed inputs across
+  the generator tabs); every other original widget (`Dropdown`, `StatCard`,
+  `InfoDot`, `Slider`, `Toggle`, `Section`, `Panel`) went unused once this repo
+  was stripped down to its current scope and was removed.
 
 ## Working in this codebase
 

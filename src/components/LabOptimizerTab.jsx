@@ -93,24 +93,26 @@ export default function LabOptimizerTab({ labData }) {
           <SummaryRow result={result} />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 14 }}>
             <div>
-              <div style={{ fontSize: 12.5, fontWeight: 700, color: C.text, marginBottom: 6 }}>Current layout</div>
-              <LabMap
-                stationEquip={result.baseline.stationEquip}
-                stationNames={result.baseline.stationNames}
-                fixtures={result.baseline.fixtures}
-                hoverSlot={hoverBefore} setHoverSlot={setHoverBefore}
-              />
-              <div style={{ marginTop: 8, fontSize: 11.5, fontFamily: MONO, color: C.muted }}>{result.baseline.totalTravelFt}ft walked across {result.baseline.perProtocol.length} protocol(s)</div>
-            </div>
-            <div>
               <div style={{ fontSize: 12.5, fontWeight: 700, color: C.teal, marginBottom: 6 }}>Optimized layout</div>
               <LabMap
                 stationEquip={result.best.stationEquip}
                 stationNames={result.best.stationNames}
                 fixtures={result.best.fixtures}
+                heatCounts={result.best.visitCounts}
                 hoverSlot={hoverAfter} setHoverSlot={setHoverAfter}
               />
               <div style={{ marginTop: 8, fontSize: 11.5, fontFamily: MONO, color: C.muted }}>{result.best.totalTravelFt}ft walked across {result.best.perProtocol.length} protocol(s)</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: C.text, marginBottom: 6 }}>Current layout</div>
+              <LabMap
+                stationEquip={result.baseline.stationEquip}
+                stationNames={result.baseline.stationNames}
+                fixtures={result.baseline.fixtures}
+                heatCounts={result.baseline.visitCounts}
+                hoverSlot={hoverBefore} setHoverSlot={setHoverBefore}
+              />
+              <div style={{ marginTop: 8, fontSize: 11.5, fontFamily: MONO, color: C.muted }}>{result.baseline.totalTravelFt}ft walked across {result.baseline.perProtocol.length} protocol(s)</div>
             </div>
           </div>
           <MovesList result={result} />
@@ -138,6 +140,10 @@ function SummaryRow({ result }) {
           {result.improvementFt}ft {result.baseline.totalTravelFt > 0 && `(${result.improvementPct}%)`}
         </div>
       </div>
+      <div style={cardStyle}>
+        <div style={{ fontSize: 10.5, color: C.muted, textTransform: "uppercase", letterSpacing: .5 }}>Total Moves</div>
+        <div style={{ fontFamily: MONO, fontSize: 18, fontWeight: 700, color: result.totalMoves > 0 ? C.text : C.muted }}>{result.totalMoves}</div>
+      </div>
     </div>
   );
 }
@@ -162,8 +168,8 @@ function MovesList({ result }) {
             {result.moves.map((m) => (
               <tr key={m.name}>
                 <td style={{ padding: "4px 8px", color: C.text }}>{m.name}</td>
-                <td style={{ padding: "4px 8px", color: C.muted, fontFamily: MONO }}>{m.from}</td>
-                <td style={{ padding: "4px 8px", color: C.teal, fontFamily: MONO, fontWeight: 700 }}>{m.to}</td>
+                <td style={{ padding: "4px 8px", color: C.red, fontFamily: MONO, fontWeight: 700 }}>{m.from}</td>
+                <td style={{ padding: "4px 8px", color: C.green, fontFamily: MONO, fontWeight: 700 }}>{m.to}</td>
               </tr>
             ))}
           </tbody>

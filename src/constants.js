@@ -19,3 +19,11 @@ export const wrapLabel = (t, max) => {
   if (c) l.push(c);
   return l.slice(0, 2);
 };
+
+// Linear-interpolates between two "#rrggbb" colors at t (0..1) — used by
+// LabMap's heat map to shade a station by relative visit frequency.
+export const mixHex = (hexA, hexB, t) => {
+  const a = parseInt(hexA.slice(1), 16), b = parseInt(hexB.slice(1), 16);
+  const lerp = (shift) => Math.round(((a >> shift) & 255) + (((b >> shift) & 255) - ((a >> shift) & 255)) * t);
+  return `#${[16, 8, 0].map((shift) => lerp(shift).toString(16).padStart(2, "0")).join("")}`;
+};

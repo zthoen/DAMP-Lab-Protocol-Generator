@@ -159,8 +159,13 @@ function describeLayout(benchOf, anchorKey, equipToStations, protocolTexts) {
   const remapped = remapEquipToStations(equipToStations, benchOf);
   const distTable = DIST_TABLES_BY_ANCHOR[anchorKey];
   const pipetteStations = pipetteStationsFor(benchOf);
+  // How many times each station is actually stepped on across every pasted
+  // protocol, under this layout — the heat map's data, tallied for free off
+  // the same parse each protocol already needs for its travelFt/errors.
+  const visitCounts = {};
   const perProtocol = protocolTexts.map((raw, i) => {
     const parsed = parseProtocol(raw, remapped, distTable, pipetteStations);
+    for (const id of parsed.fullPath) visitCounts[id] = (visitCounts[id] || 0) + 1;
     return {
       index: i, name: parsed.name || `Protocol ${i + 1}`,
       travelFt: parsed.fullTravelFt, stationsVisited: parsed.fullStationsVisited, errors: parsed.errors,
@@ -173,6 +178,7 @@ function describeLayout(benchOf, anchorKey, equipToStations, protocolTexts) {
     stationNames: stationNamesForLayout(benchOf),
     fixtures: fixturesForLayout(anchorKey),
     stationEquip: stationEquipForLayout(remapped),
+    visitCounts,
   };
 }
 
@@ -206,10 +212,14 @@ function describeLayout(benchOf, anchorKey, equipToStations, protocolTexts) {
    (and smallest) one this search happened to find.
 
    Returns `baseline` and `best` (each `{ anchorKey, benchOf, totalTravelFt,
-   perProtocol, stationNames, fixtures, stationEquip }` — `stationNames`/
-   `fixtures`/`stationEquip` are ready to hand straight to LabMap's props),
-   `moves` (bench names whose position changed, `{ name, from, to }`),
-   `anchorChanged`, `improvementFt`, `improvementPct`, and `warnings`. */
+   perProtocol, stationNames, fixtures, stationEquip, visitCounts }` —
+   `stationNames`/`fixtures`/`stationEquip`/`visitCounts` are ready to hand
+   straight to LabMap's props, `visitCounts` being the per-station tally
+   powering its heat map), `moves` (bench names whose position changed,
+   `{ name, from, to }`), `totalMoves` (`moves.length`, plus 3 if the trio
+   relocated — it's a group of 3 real stations even though it's reported as
+   one `anchorChanged` flag rather than 3 more `moves` rows), `anchorChanged`,
+   `improvementFt`, `improvementPct`, and `warnings`. */
 export function optimizeLayout(equipToStations, protocolTexts, opts = {}) {
   const { seed = 1234, restarts = 3, iterationsPerRestart = 150 } = opts;
   const cleanTexts = (protocolTexts || []).map((t) => t || "").filter((t) => t.trim());
@@ -217,7 +227,9 @@ export function optimizeLayout(equipToStations, protocolTexts, opts = {}) {
   const warnings = [];
   if (Object.keys(equipToStations || {}).length === 0) warnings.push("No equipment loaded — build the lab map first.");
   if (cleanTexts.length === 0) warnings.push("No protocols pasted — nothing to optimize against.");
-  if (warnings.length > 0) return { baseline: null, best: null, moves: [], anchorChanged: false, improvementFt: 0, improvementPct: 0, warnings };
+  if (warnings.length > 0) {
+    return { baseline: null, best: null, moves: [], totalMoves: 0, anchorChanged: false, improvementFt: 0, improvementPct: 0, warnings };
+  }
 
   const rng = mulberry32(seed);
   const baselineBenchOf = identityBenchOf();
@@ -242,8 +254,9 @@ export function optimizeLayout(equipToStations, protocolTexts, opts = {}) {
     if (id !== baseline.benchOf[name]) moves.push({ name, from: baseline.benchOf[name], to: id });
   }
   const anchorChanged = best.anchorKey !== baseline.anchorKey;
+  const totalMoves = moves.length + (anchorChanged ? 3 : 0); // the trio is 3 real stations moving together
   const improvementFt = baseline.totalTravelFt - best.totalTravelFt;
   const improvementPct = baseline.totalTravelFt > 0 ? Math.round((improvementFt / baseline.totalTravelFt) * 1000) / 10 : 0;
 
-  return { baseline, best, moves, anchorChanged, improvementFt, improvementPct, warnings };
+  return { baseline, best, moves, totalMoves, anchorChanged, improvementFt, improvementPct, warnings };
 }

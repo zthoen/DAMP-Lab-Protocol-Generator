@@ -1,5 +1,5 @@
 import React from "react";
-import { VIEW_W, VIEW_H, C, MONO, wrapLabel } from "../constants.js";
+import { VIEW_W, VIEW_H, C, MONO, wrapLabel, mixHex } from "../constants.js";
 import { SLOTS, FIXTURES, STATION_IDS, STATION_NAME, center, routeWaypoints, WALKWAY_PATH, isNearFixture, FIXTURE_PX_PER_FT } from "../data.js";
 
 // A short ruler in an empty floor corner (below column A, which never has a
@@ -25,9 +25,20 @@ function wrapStepNums(nums, maxChars) {
   return rows;
 }
 
-export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highlightPath, stationNames = STATION_NAME, fixtures = FIXTURES }) {
+// Shades a station by how many times it's visited relative to the busiest one
+// — unvisited stays the same neutral "empty" gray as the non-heat-map view,
+// climbing through a red gradient so the busiest station reads unmistakably
+// hottest. A floor of 0.2 keeps even a single visit visibly distinct from zero.
+function heatFill(count, maxCount) {
+  if (!count) return C.slot;
+  return mixHex(C.slot, C.red, 0.2 + 0.8 * Math.min(1, count / maxCount));
+}
+
+export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highlightPath, stationNames = STATION_NAME, fixtures = FIXTURES, heatCounts }) {
   const hov = hoverSlot ? stationEquip[hoverSlot] : null;
   const filled = STATION_IDS.filter((id) => (stationEquip[id] || []).length > 0).length;
+  const visited = heatCounts ? STATION_IDS.filter((id) => heatCounts[id] > 0).length : filled;
+  const maxHeat = heatCounts ? Math.max(1, ...Object.values(heatCounts)) : 0;
 
   const path = highlightPath || [];
   const routedPts = [];
@@ -44,14 +55,17 @@ export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highligh
   const benchBox = (id, r) => {
     const equip = stationEquip[id] || [];
     const isHov = hoverSlot === id;
-    const fill = equip.length === 0 ? C.slot : "#1d3a3a";
+    const count = heatCounts ? (heatCounts[id] || 0) : null;
+    const fill = heatCounts ? heatFill(count, maxHeat) : (equip.length === 0 ? C.slot : "#1d3a3a");
     const lines = wrapLabel(stationNames[id], 12);
     return (
       <g key={id} onMouseEnter={() => setHoverSlot(id)}>
         <rect x={r.x} y={r.y} width={r.w} height={r.h} fill={fill} stroke={isHov ? C.teal : C.slotLine} strokeWidth={isHov ? 2 : 1.2} />
         <text x={r.x + r.w / 2} y={r.y + 16} textAnchor="middle" fontFamily={MONO} fontSize={13} fontWeight={700} fill="#88a0b6">{id}</text>
         {lines.map((ln, i) => <text key={i} x={r.x + r.w / 2} y={r.y + 30 + i * 10} textAnchor="middle" fontFamily="system-ui" fontSize={8.5} fill="#5f7b8d">{ln}</text>)}
-        <text x={r.x + 5} y={r.y + r.h - 6} fontFamily={MONO} fontSize={9} fill={equip.length > 0 ? C.muted : "#3f5163"}>{equip.length} eq</text>
+        {heatCounts
+          ? <text x={r.x + 5} y={r.y + r.h - 6} fontFamily={MONO} fontSize={9} fill={count > 0 ? C.text : "#3f5163"}>{count} visit{count === 1 ? "" : "s"}</text>
+          : <text x={r.x + 5} y={r.y + r.h - 6} fontFamily={MONO} fontSize={9} fill={equip.length > 0 ? C.muted : "#3f5163"}>{equip.length} eq</text>}
       </g>
     );
   };
@@ -65,7 +79,7 @@ export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highligh
   const fixtureBox = (id, r) => {
     const equip = stationEquip[id] || [];
     const isHov = hoverSlot === id;
-    const fill = equip.length === 0 ? C.slot : "#1d3a3a";
+    const fill = heatCounts ? heatFill(heatCounts[id] || 0, maxHeat) : (equip.length === 0 ? C.slot : "#1d3a3a");
     const labelY = isNearFixture(id) ? r.y + r.h + 10 : r.y - 6;
     return (
       <g key={id} onMouseEnter={() => setHoverSlot(id)}>
@@ -133,10 +147,20 @@ export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highligh
             : <div style={{ fontSize: 11, color: C.muted }}>no equipment mapped here</div>}
         </div>
       )}
-      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 8, fontSize: 11, color: C.muted, fontFamily: MONO }}>
-        <span><span style={{ display: "inline-block", width: 10, height: 10, background: C.slot, border: `1px solid ${C.slotLine}`, verticalAlign: -1 }} /> empty</span>
-        <span><span style={{ display: "inline-block", width: 10, height: 10, background: "#1d3a3a", verticalAlign: -1 }} /> has equipment</span>
-        <span style={{ marginLeft: "auto" }}>{filled}/{STATION_IDS.length} stations in use</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", marginTop: 8, fontSize: 11, color: C.muted, fontFamily: MONO }}>
+        {heatCounts ? (
+          <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            0 visits
+            <span style={{ display: "inline-block", width: 70, height: 10, borderRadius: 3, background: `linear-gradient(to right, ${C.slot}, ${C.red})`, border: `1px solid ${C.slotLine}` }} />
+            {maxHeat} visits
+          </span>
+        ) : (
+          <>
+            <span><span style={{ display: "inline-block", width: 10, height: 10, background: C.slot, border: `1px solid ${C.slotLine}`, verticalAlign: -1 }} /> empty</span>
+            <span><span style={{ display: "inline-block", width: 10, height: 10, background: "#1d3a3a", verticalAlign: -1 }} /> has equipment</span>
+          </>
+        )}
+        <span style={{ marginLeft: "auto" }}>{visited}/{STATION_IDS.length} stations {heatCounts ? "visited" : "in use"}</span>
       </div>
     </div>
   );
