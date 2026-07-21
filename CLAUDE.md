@@ -333,14 +333,20 @@ the total step count, times how many anchors are worth trying — fits under
 `opts.exactBudget` (`DEFAULT_EXACT_BUDGET`, tuned from benchmarking
 `resolveSequence` at ~30ns per arrangement-step to target roughly a 1.5s worst
 case). When it fits, the result is the *actual, provably optimal* layout for
-these protocols, not a best guess, and it's completely deterministic — the
-seed plays no part. Only when there are too many relevant names for that
-budget does `optimizeLayout` fall back to `hillClimbRestricted`, a seeded
+these protocols, not a best guess, and it's completely deterministic — no
+seed plays any part. Only when there are too many relevant names for that
+budget does `optimizeLayout` fall back to `hillClimbRestricted`, a
 simulated-annealing local search — still restricted to swapping only relevant
 names into random positions (never wasting an iteration on two names whose
 placement can't matter), so even the fallback explores a far smaller,
 better-targeted space than an earlier version of this search that considered
-all 24 names regardless of relevance did.
+all 24 names regardless of relevance did. Rather than trusting a single
+seed's random walk, which can get stuck in a mediocre local optimum, the
+fallback sweeps every value in `DEFAULT_SEEDS` (24 spread-out seeds)
+independently and keeps the single best result across all of them — this is
+what makes the fallback reliably strong without asking anyone to hand-pick a
+seed; there's no seed control in the UI, `opts.seeds`/`opts.seed` exist only
+as test hooks for a smaller, faster sweep.
 
 Either way, `completeBenchOf` fills in every leftover bench name arbitrarily
 (baseline order) to round the relevant-only assignment out into a full
@@ -484,9 +490,14 @@ pasted, mirroring the other generators' graceful-degradation style).
   bench; on the Lab Optimizer tab, confirm the "optimized" map's relabeled benches
   and (when it recommends one) relocated trio box actually match `moves`/
   `anchorChanged`).
-- Protocol generation and the Lab Optimizer's search are both seeded (`mulberry32`
-  in `src/rng.js`) so the same table + settings + seed always produce the same
-  output — keep any new randomness routed through that seeded stream rather than
+- Protocol generation is seeded (`mulberry32` in `src/rng.js`, user-controlled via
+  the Protocol Generator's `seed` field) so the same table + settings + seed
+  always produce the same output. The Lab Optimizer's search also runs on
+  `mulberry32`, but there's no seed field in its UI: `exactSearch` is fully
+  deterministic (no RNG at all), and `hillClimbRestricted` sweeps
+  `DEFAULT_SEEDS` internally rather than taking one from the user, so the same
+  table + protocols always produce the same result without anyone hand-tuning a
+  seed. Keep any new randomness routed through `mulberry32` rather than
   `Math.random()`.
 - The bench grid (`SLOTS` in `data.js`) is fixed at A1–H3, plus the 8 fixed fixtures
   in `FIXTURES`, and every one of those 32 stations has a fixed name in

@@ -311,3 +311,44 @@ Balance\tDry Chemical Weighing
   assert.ok(out.relevantStationCount >= PIPETTE_STATION_NAMES.length);
   assert.ok(out.best.totalTravelFt <= out.baseline.totalTravelFt);
 });
+
+test("sweeping the default seed list never does worse than any single seed in it", () => {
+  // Same heavy-Pipette scenario as above, large enough to force the heuristic
+  // fallback. A single seed's random walk can land in a mediocre local
+  // optimum; the default sweep tries every DEFAULT_SEEDS value and keeps the
+  // best, so it should never be beaten by any one of them run alone.
+  const bigTable = parseLabTable(`
+Opentrons Flex Robot\tOpentrons
+Gel Doc\tGel Imaging
+Thermal Cycler\tPCR
+Centrifuge\tDNA Prep
+Microscope\tResearch
+Vortex Mixer\tImaging
+Incubator\tMicrobial Incubators
+Balance\tDry Chemical Weighing
+`.trim()).equipToStations;
+  const proto = `
+1. Loop\t1.1\tOpentrons Flex Robot
+\t1.2\tPipette
+\t1.3\tGel Doc
+\t1.4\tPipette
+\t1.5\tThermal Cycler
+\t1.6\tPipette
+\t1.7\tCentrifuge
+\t1.8\tPipette
+\t1.9\tMicroscope
+\t1.10\tPipette
+\t1.11\tVortex Mixer
+\t1.12\tPipette
+\t1.13\tIncubator
+\t1.14\tPipette
+\t1.15\tBalance
+`.trim();
+
+  const swept = optimizeLayout(bigTable, [proto]);
+  assert.equal(swept.optimal, false);
+  for (const seed of [1, 11, 101, 401, 1301]) {
+    const single = optimizeLayout(bigTable, [proto], { seed });
+    assert.ok(swept.best.totalTravelFt <= single.best.totalTravelFt);
+  }
+});

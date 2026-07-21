@@ -25,7 +25,6 @@ const ANCHOR_LABEL = { BC: "the B-C columns (today's spot)", DE: "the D-E column
 
 export default function LabOptimizerTab({ labData }) {
   const [texts, setTexts] = useState(loadStoredTexts);
-  const [seed, setSeed] = useState(1234);
   const [result, setResult] = useState(null);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [hoverBefore, setHoverBefore] = useState(null);
@@ -51,7 +50,7 @@ export default function LabOptimizerTab({ labData }) {
   const optimize = () => {
     setIsOptimizing(true);
     setTimeout(() => {
-      setResult(optimizeLayout(labData.equipToStations, texts, { seed }));
+      setResult(optimizeLayout(labData.equipToStations, texts));
       setIsOptimizing(false);
     }, 0);
   };
@@ -60,7 +59,6 @@ export default function LabOptimizerTab({ labData }) {
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", marginBottom: 14 }}>
         <NumField label="protocols" value={count} min={1} max={20} onChange={setCount} width={54} />
-        <NumField label="seed" value={seed} min={0} max={999999} onChange={setSeed} width={80} />
         <button className="lbtn primary" disabled={equipCount === 0 || pastedCount === 0 || isOptimizing} onClick={optimize}>
           {isOptimizing ? "Optimizing…" : "Optimize"}
         </button>
