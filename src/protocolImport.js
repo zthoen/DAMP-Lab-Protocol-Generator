@@ -4,7 +4,9 @@ import { classifyStepType } from "./stepType.js";
 // A step whose Equipment cell literally reads "Pipette" doesn't name a
 // specific piece of equipment — it's resolved against PIPETTE_STATIONS (any
 // bench with pipettes and bench space) instead of the pasted equipment list.
-const PIPETTE_LABEL = /^pipette$/i;
+// Exported so the Lab Optimizer can recognize the same substeps while
+// pre-parsing a protocol, without duplicating this pattern.
+export const PIPETTE_LABEL = /^pipette$/i;
 
 const splitRow = (line) => (line.includes("\t") ? line.split("\t") : line.split(","))
   .map((c) => c.trim());

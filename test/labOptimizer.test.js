@@ -95,36 +95,32 @@ test("best.anchorKey is always one of the 3 valid touching pairs", () => {
   }
 });
 
-// Equipment clustered near columns F-H, but the sharps/waste trio the protocol
-// leans on heavily stays anchored at B-C in the baseline — relocating the trio
-// as a group should measurably help here.
+// The sharps bin and the 4C refrigerator are both fixtures — one that can
+// relocate (the trio), one that never moves — so bouncing between them is a
+// clean, provably asymmetric case: with the refrigerator fixed off past
+// column H, FG is genuinely closer to it than BC (25ft) or DE (20ft) is
+// (15ft), regardless of how any bench equipment gets placed. No bench
+// equipment is referenced at all, so this exercises the R=0 path too.
 const trioTable = () => parseLabTable(`
-Instrument 1\tResearch
-Instrument 2\tImaging
-Instrument 3\tVacuum Oven
-Instrument 4\tTransfyr
 Used Pipette Tips\tSharps Bin
-Autoclave Bags\tBiohazard Waste
+Cold Reagent\t4C Refrigerator
 `.trim()).equipToStations;
 
 const trioProtocol = () => `
-1. Loop\t1.1\tInstrument 1
-\t1.2\tUsed Pipette Tips
-\t1.3\tInstrument 2
-\t1.4\tUsed Pipette Tips
-\t1.5\tInstrument 3
-\t1.6\tUsed Pipette Tips
-\t1.7\tInstrument 4
-\t1.8\tAutoclave Bags
+1. Loop\t1.1\tUsed Pipette Tips
+\t1.2\tCold Reagent
+\t1.3\tUsed Pipette Tips
+\t1.4\tCold Reagent
 `.trim();
 
 test("can recommend relocating the sharps/recycling/biohazard trio as a group", () => {
-  let sawAnchorChange = false;
-  for (let seed = 0; seed < 10 && !sawAnchorChange; seed++) {
-    const out = optimizeLayout(trioTable(), [trioProtocol(), trioProtocol()], { seed });
-    if (out.anchorChanged) sawAnchorChange = true;
-  }
-  assert.ok(sawAnchorChange, "never saw the trio anchor change across 10 seeds for a protocol that should favor it");
+  // This scenario's optimal anchor doesn't depend on equipment placement at
+  // all (see comment above trioTable), so it's fully deterministic — no need
+  // to search across seeds the way a heuristic-dependent case would.
+  const out = optimizeLayout(trioTable(), [trioProtocol(), trioProtocol()], { seed: 1 });
+  assert.equal(out.optimal, true);
+  assert.equal(out.anchorChanged, true);
+  assert.equal(out.best.anchorKey, "FG");
 });
 
 test("moves only lists benches whose position actually changed from baseline", () => {
