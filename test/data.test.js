@@ -117,10 +117,24 @@ test("routeWaypoints routes a same-walkway pair directly front to front, no deto
   assert.deepEqual(pts, [front("A1"), front("B2")]);
 });
 
-test("routeWaypoints keeps a same-column move a straight vertical line between the two fronts", () => {
-  const pts = routeWaypoints("A1", "A3");
-  assert.deepEqual(pts, [front("A1"), front("A3")]);
+test("routeWaypoints keeps a same-column adjacent-row move a direct line between the two fronts", () => {
+  const pts = routeWaypoints("A1", "A2");
+  assert.deepEqual(pts, [front("A1"), front("A2")]);
   assert.equal(pts[0].x, pts[1].x);
+});
+
+test("routeWaypoints bows a same-column two-rows-apart move out to the walkway's center first", () => {
+  const pts = routeWaypoints("A1", "A3");
+  assert.equal(pts.length, 3, "front -> walkway-center waypoint -> front");
+  assert.deepEqual(pts[0], front("A1"));
+  assert.deepEqual(pts[2], front("A3"));
+  const mid = pts[1];
+  assert.notEqual(mid.x, front("A1").x, "should step off the column's own edge, not hug it the whole way");
+  assert.equal(mid.y, center("A2").y, "should pass through the middle row's own height");
+  // Symmetric: the same detour applies walking the other direction too.
+  const reversePts = routeWaypoints("A3", "A1");
+  assert.equal(reversePts.length, 3);
+  assert.equal(reversePts[1].x, mid.x);
 });
 
 test("every same-walkway route (any two columns, any two rows) avoids every other bench's box", () => {

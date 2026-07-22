@@ -405,14 +405,21 @@ const fromRailPoints = (id) => {
    and ends at a station's front, never its center — never overlapping the
    station's own box.
 
-   Two benches sharing a walkway (same column, or the two columns of a pair,
-   any combination of rows) route directly, front to front, with no detour
-   through the walkway's middle first: both "front" points already sit
-   exactly on the walkway's own boundary, so the straight line between them
-   never re-enters either column's width. This is safe for every row
-   combination, including two rows apart, because there's no bench left to
-   clip along that line (verified exhaustively, for every real bench pair,
-   in data.test.js).
+   Two benches sharing a walkway route directly, front to front, with no
+   detour through the walkway's middle first — both "front" points already
+   sit exactly on the walkway's own boundary, so the straight line between
+   them never re-enters either column's width, safe for every combination of
+   rows and columns (verified exhaustively, for every real bench pair, in
+   data.test.js). One case still bows out through the walkway's own center
+   first, though: two stations in the *same* column, two rows apart (row 1
+   to row 3). Front to front there is still a safe line (it runs exactly
+   along that column's own boundary, never crossing into it), but it's
+   indistinguishable from hugging the middle bench's wall for the entire
+   span — not how a technician actually walks past it — so that one case
+   detours out to the walkway's center at the middle row's height before
+   heading to the destination's front, the same "step off the wall into the
+   open lane" motion a same-column adjacent-row move never needed in the
+   first place (see routeWaypoints below).
 
    Everything else — different walkways, or anything touching a fixture,
    including the trio for simplicity — routes via the back-walkway rail
@@ -435,7 +442,14 @@ const fromRailPoints = (id) => {
 export function routeWaypoints(aId, bId) {
   if (!isFixtureId(aId) && !isFixtureId(bId)) {
     const gA = groupOf(aId[0]), gB = groupOf(bId[0]);
-    if (gA === gB) return [front(aId), front(bId)];
+    if (gA === gB) {
+      const fA = front(aId), fB = front(bId);
+      if (aId[0] === bId[0] && Math.abs(rowOf(aId) - rowOf(bId)) === 2) {
+        const mid = { x: walkwayCenterX(gA), y: center(`${aId[0]}2`).y };
+        return [fA, mid, fB];
+      }
+      return [fA, fB];
+    }
   }
   return [...toRailPoints(aId), ...fromRailPoints(bId)];
 }

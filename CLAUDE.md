@@ -78,12 +78,21 @@ station's front, never its center (`front(id)`, exported for this), so the line
 never overlaps into a station's own box. A route doesn't need to be funneled through
 a walkway's exact middle, though — it isn't a floor-marked lane narrower than the
 walkway itself:
-- **Same walkway** (same column, or two different columns of a pair — any
-  combination of rows, including two rows apart): a direct line, front to front,
-  with nothing in between. This is safe for every row combination, not just adjacent
-  ones, because both "front" points already sit exactly on the walkway's boundary, so
-  the line between them never re-enters either column's width — there's no bench left
-  to clip.
+- **Same walkway, two different columns of a pair** (any combination of rows): a
+  direct line, front to front, with nothing in between — safe because both "front"
+  points already sit exactly on the walkway's boundary, so the line between them
+  never re-enters either column's width.
+- **Same column, adjacent rows** (`|rowA-rowB| === 1`): also a direct front-to-front
+  line — same safety argument, and there's no third bench in the way to begin with.
+- **Same column, two rows apart** (row 1 to row 3): front to front here would run
+  exactly along that column's own edge for the entire span — safe (it's the middle
+  bench's boundary, never its interior), but indistinguishable from hugging that
+  bench's wall the whole way rather than actually walking past it. This one case
+  bows out to the walkway's own center (`walkwayCenterX`) at the middle row's height
+  first, then in to the destination's front — two diagonal legs instead of a flush
+  vertical line, still provably safe for the same reason (both legs stay within the
+  walkway's rectangle, since x only ever moves from the column's edge outward toward
+  the center, never past it).
 - **Different walkways, or anything touching a fixture** (including the trio,
   aliased to its anchor column's row-3 bench for visual consistency even though
   that's numerically a same-column reach in feet) routes via the back-walkway rail
