@@ -6,8 +6,8 @@ import LabMap from "./LabMap.jsx";
 
 export default function ProtocolGeneratorTab({ labData }) {
   const [count, setCount] = useState(8);
-  const [minSteps, setMinSteps] = useState(4);
-  const [maxSteps, setMaxSteps] = useState(8);
+  const [minSteps, setMinSteps] = useState(10);
+  const [maxSteps, setMaxSteps] = useState(30);
   const [seed, setSeed] = useState(1234);
   const [result, setResult] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
@@ -26,8 +26,8 @@ export default function ProtocolGeneratorTab({ labData }) {
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", marginBottom: 14 }}>
         <NumField label="protocols" value={count} min={1} max={50} onChange={setCount} width={54} />
-        <NumField label="min steps" value={minSteps} min={2} max={20} onChange={setMinSteps} width={54} />
-        <NumField label="max steps" value={maxSteps} min={2} max={20} onChange={setMaxSteps} width={54} />
+        <NumField label="min steps" value={minSteps} min={2} max={30} onChange={setMinSteps} width={54} />
+        <NumField label="max steps" value={maxSteps} min={2} max={30} onChange={setMaxSteps} width={54} />
         <NumField label="seed" value={seed} min={0} max={999999} onChange={setSeed} width={80} />
         <button className="lbtn primary" disabled={equipCount === 0} onClick={generate}>Generate</button>
         {equipCount === 0 && <span style={{ fontSize: 11.5, color: C.amber }}>Load equipment on the Lab Builder tab first.</span>}
