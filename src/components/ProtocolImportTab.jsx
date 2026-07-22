@@ -71,6 +71,7 @@ export default function ProtocolImportTab({ labData }) {
           stationEquip={labData.stationEquip}
           hoverSlot={hoverSlot} setHoverSlot={setHoverSlot}
           highlightPath={highlightPath}
+          stepLinks={parsed.stepLinks}
         />
         {parsed.steps.length > 0 && (
           <div style={{ marginTop: 8, fontSize: 11.5, fontFamily: MONO, color: C.muted }}>

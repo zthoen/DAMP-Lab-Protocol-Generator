@@ -354,11 +354,16 @@ station-only, null-filtered list for that step's own route — `stationsVisited`
 and `travelFt`), plus whole-protocol `fullPath`/`fullStationsVisited`/
 `fullTravelFt` computed over the single concatenated path (so the whole-protocol
 total also counts the walk from one step's last station to the next step's
-first, not just the sum of each step's own smaller total), and `errors`.
-`distTable`/`pipetteStations` default to the real floor's own
-(`BENCH_DIST_FT`/`PIPETTE_STATIONS`) — the only caller that ever passes
-different ones is the Lab Optimizer below, scoring a candidate layout without
-needing its own copy of this nearest-station walking logic.
+first, not just the sum of each step's own smaller total), `stepLinks` (one
+`[lastStationOfStepN, firstStationOfStepN+1]` pair per step boundary — a step
+with no resolved stations at all can't anchor a link on either side of it — for
+`LabMap.jsx` to draw the hand-off between steps as its own dashed overlay,
+routed the same way as everything else but visually distinct from ordinary
+within-step movement), and `errors`. `distTable`/`pipetteStations` default to
+the real floor's own (`BENCH_DIST_FT`/`PIPETTE_STATIONS`) — the only caller
+that ever passes different ones is the Lab Optimizer below, scoring a
+candidate layout without needing its own copy of this nearest-station walking
+logic.
 
 **Lab Optimizer (`src/labOptimizer.js`)** — `optimizeLayout(equipToStations,
 protocolTexts, opts)` searches for a station layout that minimizes total travel
@@ -519,7 +524,15 @@ shape-validating parse instead (see `LabOptimizerTab.jsx` below).
   animation timeline is keyed off the path's *contents* (`path.join("|")`), not its
   array identity, since the parent tab passes a freshly-built array on every render
   (e.g. on hover) — keying on identity would otherwise reset playback constantly.
-  This is the only state `LabMap.jsx` owns otherwise; it's a pure render of
+  A fifth optional prop, `stepLinks` (an array of `[a, b]` station-id pairs —
+  `ProtocolImportTab.jsx` passes `parsed.stepLinks`, see `protocolImport.js`
+  above), draws each pair's `routeWaypoints` route as its own **dashed** green
+  polyline layered on top of the main solid one, so a step-to-step hand-off
+  reads as visually distinct from ordinary within-step movement regardless of
+  whether the full protocol or just one step is currently selected — the
+  Protocol Generator tab simply never passes it, since its protocols are flat
+  step lists with no step/substep grouping to have a boundary in the first
+  place. This is the only state `LabMap.jsx` owns otherwise; it's a pure render of
   whatever's in the parsed table. A busy badge (many revisits, e.g.
   Consumables in a long real protocol) would otherwise grow one wide pill that
   overlaps its neighbors — instead `wrapStepNums` packs the step numbers into as
@@ -541,7 +554,10 @@ shape-validating parse instead (see `LabOptimizerTab.jsx` below).
   rendering its substeps through the shared `StepTable` (see `Controls.jsx`
   below) — an unresolved substep shows `?` in red instead of a name. Selecting a
   step highlights just that step's own `path`; the summary card highlights
-  `fullPath`, the whole route start to finish. The pasted protocol text itself
+  `fullPath`, the whole route start to finish. Either way, `parsed.stepLinks`
+  is passed to `LabMap.jsx` unconditionally, so the dashed step-boundary
+  overlay (see `LabMap.jsx` above) always shows every step's hand-off to the
+  next, regardless of which one is currently selected. The pasted protocol text itself
   is persisted via `usePersistedState(sessionStorage, "damp-lab-raw-protocol", "")`
   — deliberately `sessionStorage`, not `localStorage`: it should survive a
   reload within the same browser session but never resurface in a later one,

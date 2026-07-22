@@ -88,10 +88,40 @@ test("travelFt and path are computed per step, and fullPath concatenates every s
 });
 
 test("empty input parses cleanly", () => {
-  const { steps, fullPath, errors } = parseProtocol("", equipToStations());
+  const { steps, fullPath, stepLinks, errors } = parseProtocol("", equipToStations());
   assert.deepEqual(steps, []);
   assert.deepEqual(fullPath, []);
+  assert.deepEqual(stepLinks, []);
   assert.deepEqual(errors, []);
+});
+
+test("stepLinks has one [lastOfStep, firstOfNextStep] pair per step boundary", () => {
+  const raw = `
+1. A\t1.1\tOpentrons Flex Robot
+\t1.2\tNanoDrop 2000
+2. B\t2.1\tThermal Cycler
+3. C\t3.1\tBiorad Gel Doc XR+ Imaging System
+`.trim();
+  const { steps, stepLinks } = parseProtocol(raw, equipToStations());
+  assert.equal(stepLinks.length, 2);
+  assert.deepEqual(stepLinks[0], [steps[0].path[steps[0].path.length - 1], steps[1].path[0]]);
+  assert.deepEqual(stepLinks[1], [steps[1].path[steps[1].path.length - 1], steps[2].path[0]]);
+});
+
+test("a single step has no stepLinks at all", () => {
+  const raw = `1. A\t1.1\tOpentrons Flex Robot`.trim();
+  const { stepLinks } = parseProtocol(raw, equipToStations());
+  assert.deepEqual(stepLinks, []);
+});
+
+test("a step with no resolved stations can't anchor a link on either side of it", () => {
+  const raw = `
+1. A\t1.1\tOpentrons Flex Robot
+2. Unmapped\t2.1\tMystery Machine
+3. C\t3.1\tThermal Cycler
+`.trim();
+  const { stepLinks } = parseProtocol(raw, equipToStations());
+  assert.deepEqual(stepLinks, []);
 });
 
 test("equipment matching is case-insensitive", () => {

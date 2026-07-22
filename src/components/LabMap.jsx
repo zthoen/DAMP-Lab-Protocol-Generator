@@ -75,7 +75,7 @@ function heatFill(count, maxCount) {
   return mixHex(C.slot, C.red, 0.2 + 0.8 * Math.min(1, count / maxCount));
 }
 
-export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highlightPath, stationNames = STATION_NAME, fixtures = FIXTURES, heatCounts }) {
+export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highlightPath, stationNames = STATION_NAME, fixtures = FIXTURES, heatCounts, stepLinks }) {
   const hov = hoverSlot ? stationEquip[hoverSlot] : null;
   const filled = STATION_IDS.filter((id) => (stationEquip[id] || []).length > 0).length;
   const visited = heatCounts ? STATION_IDS.filter((id) => heatCounts[id] > 0).length : filled;
@@ -94,6 +94,12 @@ export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highligh
   // marker silently painted over the first.
   const stepsByStation = {};
   path.forEach((id, i) => (stepsByStation[id] ??= []).push(i + 1));
+
+  // Step-to-step transitions (the walk from one step's last station to the next
+  // step's first), routed exactly the same way as the main path above — just
+  // drawn separately, dashed, so they read as "hands off to the next step" rather
+  // than blending into the ordinary within-step movement.
+  const linkPts = (stepLinks || []).map(([a, b]) => [front(a), ...routeWaypoints(a, b)]);
 
   // Keyed on the path's contents, not its array identity — the parent tab
   // rebuilds this array every render (e.g. on hover), which would otherwise
@@ -230,6 +236,13 @@ export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highligh
         {routedPts.length > 1 && (
           <polyline points={routedPts.map((p) => `${p.x},${p.y}`).join(" ")} fill="none" stroke={C.teal} strokeWidth={2} opacity={0.9} />
         )}
+        {linkPts.map((pts, i) => (
+          <polyline
+            key={"link" + i}
+            points={pts.map((p) => `${p.x},${p.y}`).join(" ")}
+            fill="none" stroke={C.green} strokeWidth={2} strokeDasharray="6 4" opacity={0.9}
+          />
+        ))}
         {dotPoint && (
           <circle cx={dotPoint.x} cy={dotPoint.y} r={7} fill={C.amber} stroke="#0a1017" strokeWidth={1.5} />
         )}
@@ -280,6 +293,12 @@ export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highligh
             <span><span style={{ display: "inline-block", width: 10, height: 10, background: C.slot, border: `1px solid ${C.slotLine}`, verticalAlign: -1 }} /> empty</span>
             <span><span style={{ display: "inline-block", width: 10, height: 10, background: "#1d3a3a", verticalAlign: -1 }} /> has equipment</span>
           </>
+        )}
+        {linkPts.length > 0 && (
+          <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <svg width={18} height={10}><line x1={0} y1={5} x2={18} y2={5} stroke={C.green} strokeWidth={2} strokeDasharray="4 3" /></svg>
+            step → next step
+          </span>
         )}
         <span style={{ marginLeft: "auto" }}>{visited}/{STATION_IDS.length} stations {heatCounts ? "visited" : "in use"}</span>
       </div>

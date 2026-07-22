@@ -61,7 +61,10 @@ const HEADER_WORD = /^step$/i;
    `steps` (one entry per step number, in ascending order, each with its own
    `substeps`, `path` — the ordered, station-only list for that step's own
    route — `stationsVisited`, and `travelFt`), `fullPath` (every step's path
-   concatenated, for the whole-protocol route), and `errors`.
+   concatenated, for the whole-protocol route), `stepLinks` (one `[a, b]` pair
+   per step boundary — the previous step's last station and the next step's
+   first — for drawing the hand-off between steps separately from `fullPath`'s
+   solid line), and `errors`.
 
    `distTable` and `pipetteStations` default to the real, current floor
    (BENCH_DIST_FT, PIPETTE_STATIONS) — the Lab Optimizer is the only caller
@@ -75,7 +78,7 @@ export function parseProtocol(raw, equipToStations = {}, distTable = BENCH_DIST_
   // lines are dropped; individual cells are trimmed after splitting instead.
   const lines = String(raw || "").split(/\r?\n/).filter((l) => l.trim() !== "");
   const errors = [];
-  if (lines.length === 0) return { name: null, steps: [], fullPath: [], errors };
+  if (lines.length === 0) return { name: null, steps: [], fullPath: [], fullStationsVisited: 0, fullTravelFt: 0, stepLinks: [], errors };
 
   const equipLookup = {};
   for (const eq of Object.keys(equipToStations)) equipLookup[eq.toLowerCase()] = eq;
@@ -139,5 +142,18 @@ export function parseProtocol(raw, equipToStations = {}, distTable = BENCH_DIST_
   const fullPath = steps.flatMap((s) => s.path);
   const fullStationsVisited = new Set(fullPath).size;
   const fullTravelFt = travelFtOf(fullPath, distTable);
-  return { name, steps, fullPath, fullStationsVisited, fullTravelFt, errors };
+
+  // The hand-off between consecutive steps — last station of one, first of the
+  // next — as its own list of pairs, so LabMap.jsx can draw each one as a
+  // separate dashed overlay (routed exactly like any other leg of the path)
+  // distinguishing "moving on to the next step" from ordinary within-step
+  // movement. A step with no resolved stations at all (every substep's
+  // equipment unmapped) can't anchor a link on either side of it.
+  const stepLinks = [];
+  for (let i = 1; i < steps.length; i++) {
+    const prevPath = steps[i - 1].path, nextPath = steps[i].path;
+    if (prevPath.length && nextPath.length) stepLinks.push([prevPath[prevPath.length - 1], nextPath[0]]);
+  }
+
+  return { name, steps, fullPath, fullStationsVisited, fullTravelFt, stepLinks, errors };
 }
