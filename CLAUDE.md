@@ -538,19 +538,28 @@ shape-validating parse instead (see `LabOptimizerTab.jsx` below).
   them identically to how the dashed line itself is drawn, so the dot arrives
   exactly where the dashed line ends), meaning Play walks the dot straight
   off the end of the current step and on down the dashed hand-off. A sixth
-  optional prop, `onStepComplete`, fires once — guarded by the same path-key
-  ref pattern as the reset effect, so it can't re-fire on an unrelated
-  re-render — when that extended run finishes, and *only* when it was
-  actually extended (finishing a step with no link, or "Full Protocol",
-  never fires it, since there's nowhere further to advance to);
-  `ProtocolImportTab.jsx` implements it to select the next step, so the map
-  and step list both update automatically and the user only has to hit Play
-  again to keep walking through the protocol, one step at a time, without
-  ever clicking back over to the step list themselves. The Protocol
-  Generator tab never passes `stepLinks`/`onStepComplete` at all, since its
-  protocols are flat step lists with no step/substep grouping to have a
-  boundary in the first place. This is the only state `LabMap.jsx` owns
-  otherwise; it's a pure render of whatever's in the parsed table. A busy badge (many revisits, e.g.
+  optional prop, `onStepComplete`, fires once when that extended run
+  finishes, and *only* when it was actually extended (finishing a step with
+  no link, or "Full Protocol", never fires it, since there's nowhere further
+  to advance to); `ProtocolImportTab.jsx` implements it to select the next
+  step, so the map and step list both update automatically and the user only
+  has to hit Play again to keep walking through the protocol, one step at a
+  time, without ever clicking back over to the step list themselves. The
+  reset-on-path-change logic and this completion check have to live in the
+  *same* effect, not two separate ones both watching `pathKey` — auto-
+  advancing hands the component a new (often much shorter) pathKey while
+  `elapsed` still holds its old value from the previous, often much longer,
+  step; two effects would let the completion check run on that same pass
+  against the stale `elapsed`, see it already exceeds the new timeline's
+  (smaller) `totalMs`, and immediately re-fire `onStepComplete` — silently
+  skipping the just-selected step before it's ever shown, faster than a
+  render. Folding both checks into one effect means a `pathKey` change always
+  resets and returns *before* any completion check runs, so it never sees
+  stale `elapsed` paired with a fresh `timeline`. The Protocol Generator tab
+  never passes `stepLinks`/`onStepComplete` at all, since its protocols are
+  flat step lists with no step/substep grouping to have a boundary in the
+  first place. This is the only state `LabMap.jsx` owns otherwise; it's a
+  pure render of whatever's in the parsed table. A busy badge (many revisits, e.g.
   Consumables in a long real protocol) would otherwise grow one wide pill that
   overlaps its neighbors — instead `wrapStepNums` packs the step numbers into as
   few comma-joined rows as fit a safe per-row width (font size also steps down as

@@ -124,14 +124,6 @@ export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highligh
   const completedKeyRef = useRef(null);
 
   useEffect(() => {
-    if (lastKeyRef.current !== pathKey) {
-      lastKeyRef.current = pathKey;
-      setElapsed(0);
-      setPlaying(false);
-    }
-  }, [pathKey]);
-
-  useEffect(() => {
     if (!playing) return undefined;
     lastTsRef.current = null;
     const tick = (ts) => {
@@ -149,16 +141,28 @@ export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highligh
     return () => cancelAnimationFrame(rafRef.current);
   }, [playing, timeline]);
 
-  // Fires once per finished run — only when the technician actually walked a
-  // step-link extension (there's somewhere to advance *to*), and only once per
-  // pathKey, since elapsed staying at totalMs after finishing would otherwise
-  // re-fire on every unrelated re-render.
+  // Reset-on-path-change and the completion check below have to live in one
+  // effect, not two — auto-advancing to a new step (via onStepComplete) hands
+  // this component a new, shorter pathKey while `elapsed` still holds its old
+  // value from the *previous*, often much longer, step. Two separate effects
+  // both watching pathKey would let the completion check run on that same
+  // pass with the stale elapsed still in scope, see it already exceeds the
+  // new (short) timeline's totalMs, and immediately re-fire onStepComplete —
+  // skipping the freshly-selected step before it's ever shown, invisibly
+  // fast. Folding both into one effect means a pathKey change always resets
+  // and bails out *before* any completion check can run against stale state.
   useEffect(() => {
+    if (lastKeyRef.current !== pathKey) {
+      lastKeyRef.current = pathKey;
+      setElapsed(0);
+      setPlaying(false);
+      return;
+    }
     if (hasLinkExtension && timeline.totalMs > 0 && elapsed >= timeline.totalMs && completedKeyRef.current !== pathKey) {
       completedKeyRef.current = pathKey;
       onStepComplete?.();
     }
-  }, [elapsed, timeline.totalMs, pathKey, hasLinkExtension]);
+  }, [pathKey, elapsed, timeline.totalMs, hasLinkExtension]);
 
   const handlePlay = () => {
     if (timeline.totalMs === 0) return;
