@@ -1,0 +1,23 @@
+{
+  "name": "@damp-lab/protocol-visualizer-embed",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Truncated, current-station-to-next-station navigation map extracted from the DAMP Lab Cirrus Protocol Visualizer, for embedding into another React + TypeScript application. Self-contained: no dependency on the rest of the damp-lab-cirrus app (no App.jsx, tabs, or paste/persisted-state UI).",
+  "type": "module",
+  "main": "index.ts",
+  "types": "index.ts",
+  "sideEffects": false,
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "devDependencies": {
+    "typescript": ">=5.0.0",
+    "@types/react": ">=18",
+    "@types/react-dom": ">=18"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc"
+  }
+}

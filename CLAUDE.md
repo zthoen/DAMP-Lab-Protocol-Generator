@@ -825,3 +825,23 @@ shape-validating parse instead (see `LabOptimizerTab.jsx` below).
 - The Read/Write keyword list in `stepType.js` is a heuristic, not a lookup table —
   if a new equipment name is consistently misclassified, add its keyword there rather
   than special-casing it in `protocolGen.js`.
+- `src/embed/` holds TypeScript ports of individual tools, prepped for handoff into
+  other, external React codebases (the eventual "these tools get embedded into
+  existing backends" work) — each subfolder is a self-contained mini-package (its
+  own `package.json`/`tsconfig.json`/`README.md`) with **no** dependency on
+  `App.jsx`, the tab components, or this app's paste/persisted-state UI, meant to
+  be copied out wholesale rather than imported from within this app. They're
+  intentionally outside `npm test`'s reach (this repo has no TS toolchain of its
+  own) — verify a subfolder by `cd`-ing into it and running `npm install && npm run
+  typecheck` (and `npm run build` to confirm it emits cleanly), same as a host
+  project would. `protocol-visualizer/` is the first one: a truncated,
+  current-station-to-next-station-only port of `LabMap.jsx` (`SubstepStationMap.tsx`)
+  for navigating one substep transition at a time — see its own README for what
+  was intentionally dropped (multi-station routes, the heat map, the step-link
+  overlay, revisit badges, the equipment hover panel, and paste-text parsing; the
+  host is assumed to already have structured substep data, not raw pasted text).
+  When porting another tool the same way, follow the same shape: trim `data.js`
+  down to only what that tool's rendering actually needs (don't drag in unrelated
+  features' constants/functions), give ids a literal TS union in `types.ts` rather
+  than a bare `string`, and keep the port's own README explicit about what it
+  deliberately left out and why.
